@@ -14,7 +14,7 @@
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.1"
+#define FW_VERSION   "1.2"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
@@ -29,7 +29,9 @@ void canTask(void*);
 void sendFrame(uint32_t pgn, uint8_t da, const uint8_t* d, uint8_t len, uint8_t prio);
 void sendClaim();
 void sendRequest(uint32_t pgn, uint8_t da);
-void startDiag(uint32_t durMs, bool active);
+void activeSchedule(uint32_t el, uint32_t now);
+void applyCommand(uint32_t now);
+bool runCommand(int cmd, uint32_t durMs, bool active);
 void handleSnapshot();
 void handleStart();
 void handleResume();
@@ -42,6 +44,7 @@ void handleUpdateDone();
 bool verifyRollbackLater() { return true; }
 bool otaValidated = false;
 bool otaOk = false;
+bool otaWasFrozen = false;
 String otaErr;
 
 // ---------------- Estado ----------------
@@ -49,232 +52,363 @@ n2k::Core* core = nullptr;   // en el heap: es demasiado grande para la RAM est�
 SemaphoreHandle_t mtx;
 WebServer server(80);
 
-volatile bool activeMode = true;     // modo completo (envía peticiones)
+// Todo lo que toca el driver TWAI se hace SOLO en la tarea CAN. La web pide los
+// cambios con un comando y espera a que la tarea lo aplique.
+enum { CMD_NONE = 0, CMD_START, CMD_RESUME, CMD_PAUSE };
+volatile int cmdPending = CMD_NONE;
+volatile uint32_t cmdDurMs = 0;
+volatile bool cmdActive = false;
+volatile uint32_t cmdSeq = 0, cmdDone = 0;
+
+volatile bool activeMode = false;    // al arrancar solo escucha: no transmite nada hasta que se pida
 volatile bool canRunning = false;
 volatile bool frozen = false;        // diagnóstico terminado: datos congelados
 volatile bool diagRunning = false;
+bool claimed = false;                // hemos reclamado dirección en este diagnóstico
 uint32_t diagStart = 0, diagDur = 0;
-uint32_t claimAt = 0;                // momento del último address claim propio
 int reqStep = 0;
+// Peticiones dirigidas pendientes (se envían de una en una, sin bloquear)
+static const int REQ_Q = 512;
+struct Req { uint8_t sa; uint8_t kind; };   // kind: 0 = 60928, 1 = 126996, 2 = 126998
+Req reqQueue[REQ_Q]; int reqQHead = 0, reqQTail = 0;
+static const uint32_t REQ_PGN[3] = { 60928, 126996, 126998 };
+uint32_t reqLastMs = 0;
 
-// Tensión
-float vNow = 0, vMin = 99, vMax = 0; double vSum = 0; uint32_t vN = 0;
-// Contadores TWAI (base al iniciar diagnóstico)
-twai_status_info_t twBase, twEnd;
+// Tensión (protegida por el mutex)
+float vNow = 0, vMin = 99, vMax = 0, vEma = 0, vDev = 0; double vSum = 0; uint32_t vN = 0;
+// Contadores TWAI: base al iniciar, último leído y congelado al terminar (protegidos por el mutex)
+twai_status_info_t twBase, twNow, twEnd;
 uint32_t alBusOff = 0, alErrPass = 0, alRecovered = 0;
-const char* twState = "stopped";
+const char* twState = "parado";
 
-// ---------------- CAN ----------------
+// ---------------- CAN (solo desde la tarea CAN) ----------------
 void canStart(bool active) {
   if (canRunning) { twai_stop(); twai_driver_uninstall(); canRunning = false; }
   twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_PIN, CAN_RX_PIN, active ? TWAI_MODE_NORMAL : TWAI_MODE_LISTEN_ONLY);
-  g.rx_queue_len = 400;
-  g.tx_queue_len = 20;
+  g.rx_queue_len = 512;
+  g.tx_queue_len = active ? 24 : 1;
   g.alerts_enabled = TWAI_ALERT_BUS_OFF | TWAI_ALERT_ERR_PASS | TWAI_ALERT_BUS_RECOVERED | TWAI_ALERT_ERR_ACTIVE;
   twai_timing_config_t t = TWAI_TIMING_CONFIG_250KBITS();
   twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
   if (twai_driver_install(&g, &t, &f) == ESP_OK && twai_start() == ESP_OK) {
-    canRunning = true; twState = "running";
+    canRunning = true; twState = "funcionando";
   } else {
+    twai_driver_uninstall();
     twState = "error";
   }
   memset(&twBase, 0, sizeof(twBase));
-  twai_get_status_info(&twBase);
+  if (canRunning) twai_get_status_info(&twBase);
+  twNow = twBase;
 }
 
 void sendFrame(uint32_t pgn, uint8_t da, const uint8_t* d, uint8_t len, uint8_t prio) {
-  if (!canRunning || !activeMode) return;
+  if (!canRunning || !activeMode) return;   // en modo escucha nunca se transmite
   twai_message_t m = {};
   m.extd = 1;
   m.identifier = n2k::Core::makeId(prio, pgn, da, core->ownAddr);
   m.data_length_code = len;
   memcpy(m.data, d, len);
-  if (twai_transmit(&m, pdMS_TO_TICKS(5)) == ESP_OK) core->bus.ownTx++; else core->bus.ownTxFail++;
+  if (twai_transmit(&m, 0) == ESP_OK) core->bus.ownTx++; else core->bus.ownTxFail++;
 }
 
 void sendClaim() {
   uint8_t d[8];
   for (int i = 0; i < 8; i++) d[i] = (core->ownName >> (8 * i)) & 0xFF;
   sendFrame(60928, 255, d, 8, 6);
-  claimAt = millis();
+  core->noteOwnClaim(millis());
+  claimed = true;
 }
 
 void sendRequest(uint32_t pgn, uint8_t da) {
   uint8_t d[3] = { (uint8_t)(pgn & 0xFF), (uint8_t)((pgn >> 8) & 0xFF), (uint8_t)((pgn >> 16) & 0xFF) };
+  if (pgn == 60928) core->noteClaimRequest(millis());
   sendFrame(59904, da, d, 3, 6);
 }
 
-// Peticiones activas programadas durante el diagnóstico
-void activeSchedule(uint32_t el) {
+static void queueRequest(uint8_t sa, uint32_t pgn) {
+  int nx = (reqQTail + 1) & (REQ_Q - 1);
+  if (nx == reqQHead) return;
+  reqQueue[reqQTail].sa = sa; reqQueue[reqQTail].kind = pgn == 60928 ? 0 : pgn == 126996 ? 1 : 2;
+  reqQTail = nx;
+}
+
+// ¿Sigue haciendo falta pedírselo? (puede haber contestado mientras esperaba en la cola)
+static bool stillMissing(uint8_t sa, int kind) {
+  n2k::Device& d = core->dev[sa];
+  if (kind == 0) return d.claims == 0;
+  if (d.info < 0) return true;
+  return kind == 1 ? core->info[d.info].piLen == 0 : core->info[d.info].ciLen == 0;
+}
+
+// Peticiones activas programadas durante el diagnóstico (con el mutex tomado)
+void activeSchedule(uint32_t el, uint32_t now) {
   struct Step { uint32_t at; int what; };
   static const Step steps[] = { {0, 0}, {400, 1}, {900, 2}, {1400, 3}, {6000, 4}, {12000, 4}, {20000, 5} };
   while (reqStep < (int)(sizeof(steps) / sizeof(steps[0])) && el >= steps[reqStep].at) {
     int w = steps[reqStep].what;
     if (w == 0) sendClaim();
-    else if (w == 1) { core->requestsSentAt = millis(); sendRequest(60928, 255); }
-    else if (w == 2) { core->requestsSentAt = millis(); sendRequest(126996, 255); }
-    else if (w == 3) { sendRequest(126998, 255); }
-    else if (w == 4 || w == 5) {
+    else if (w == 1) { core->requestsSentAt = now; sendRequest(60928, 255); }
+    else if (w == 2 || w == 3) {
+      // Información de producto / configuración. En redes pequeñas, una petición a
+      // todos; en las grandes, una a una y espaciadas: si contestan 100 equipos a la
+      // vez con mensajes largos se satura la red y los mensajes llegan rotos.
+      uint32_t pgn = w == 2 ? 126996 : 126998;
+      int nDev = 0;
+      for (int sa = 0; sa < 252; sa++) if (core->dev[sa].seen && sa != core->ownAddr) nDev++;
+      if (nDev <= 24) sendRequest(pgn, 255);
+      else for (int sa = 0; sa < 252; sa++) if (core->dev[sa].seen && sa != core->ownAddr) queueRequest(sa, pgn);
+    }
+    else {
       // a cada equipo que todavía no ha contestado, se lo pedimos directamente
       for (int sa = 0; sa < 252; sa++) {
         n2k::Device& d = core->dev[sa];
         if (!d.seen || sa == core->ownAddr) continue;
         bool hasPi = d.info >= 0 && core->info[d.info].piLen > 0;
-        if (w == 4 && !hasPi) { sendRequest(126996, sa); vTaskDelay(pdMS_TO_TICKS(10)); }
-        if (w == 5 && d.claims == 0) { core->requestsSentAt = millis(); sendRequest(60928, sa); vTaskDelay(pdMS_TO_TICKS(10)); }
+        if (w == 4 && !hasPi) queueRequest(sa, 126996);
+        if (w == 5 && d.claims == 0) queueRequest(sa, 60928);
       }
     }
     reqStep++;
   }
+  // una petición dirigida cada 20 ms como mucho: no satura la red ni la cola de envío
+  while (reqQHead != reqQTail && now - reqLastMs >= 20) {
+    Req r = reqQueue[reqQHead];
+    reqQHead = (reqQHead + 1) & (REQ_Q - 1);
+    if (!stillMissing(r.sa, r.kind)) continue;
+    if (r.kind == 0) core->requestsSentAt = now;
+    sendRequest(REQ_PGN[r.kind], r.sa);
+    reqLastMs = now;
+  }
+}
+
+static void resetCounters(uint32_t now) {
+  core->reset(now);
+  vMin = 99; vMax = 0; vSum = 0; vN = 0; vDev = 0;
+  alBusOff = alErrPass = alRecovered = 0;
+  if (canRunning) twai_get_status_info(&twBase);
+  twNow = twBase;
+  reqStep = 0; reqQHead = reqQTail = 0; reqLastMs = 0;
+  claimed = false;
+}
+
+// Ejecuta en la tarea CAN el comando pedido desde la web
+void applyCommand(uint32_t now) {
+  int cmd = cmdPending;
+  if (cmd == CMD_NONE) return;
+  if (cmd == CMD_START) {
+    bool active = cmdActive;
+    if (active != activeMode || !canRunning) { activeMode = active; canStart(active); }
+    xSemaphoreTake(mtx, portMAX_DELAY);
+    now = millis();
+    resetCounters(now);
+    diagStart = now; diagDur = cmdDurMs;
+    diagRunning = true; frozen = false;
+    xSemaphoreGive(mtx);
+  } else if (cmd == CMD_RESUME) {
+    // vuelve a la vista en directo: solo escuchar (no transmite)
+    if (activeMode || !canRunning) { activeMode = false; canStart(false); }
+    xSemaphoreTake(mtx, portMAX_DELAY);
+    resetCounters(millis());
+    diagRunning = false; diagStart = 0; frozen = false;
+    xSemaphoreGive(mtx);
+  } else if (cmd == CMD_PAUSE) {
+    xSemaphoreTake(mtx, portMAX_DELAY);
+    frozen = true; diagRunning = false;
+    xSemaphoreGive(mtx);
+  }
+  cmdPending = CMD_NONE;
+  cmdDone = cmdSeq;
 }
 
 void canTask(void*) {
-  uint32_t lastV = 0;
+  uint32_t lastV = 0, lastSt = 0;
+  canStart(false);   // la ISR queda en este núcleo
+  static n2k::Frame batch[32];
   for (;;) {
-    twai_message_t m;
-    if (canRunning && twai_receive(&m, pdMS_TO_TICKS(5)) == ESP_OK) {
-      if (m.extd && !m.rtr && !frozen) {
-        n2k::Frame f; f.id = m.identifier; f.len = m.data_length_code > 8 ? 8 : m.data_length_code;
+    // 1) Recibe un lote de tramas (espera como mucho 2 ms a la primera)
+    int n = 0;
+    if (canRunning) {
+      twai_message_t m;
+      TickType_t wait = pdMS_TO_TICKS(2);
+      while (n < 32 && twai_receive(&m, wait) == ESP_OK) {
+        wait = 0;
+        if (!m.extd || m.rtr) continue;
+        n2k::Frame& f = batch[n++];
+        f.id = m.identifier; f.len = m.data_length_code > 8 ? 8 : m.data_length_code;
         memcpy(f.data, m.data, f.len);
-        xSemaphoreTake(mtx, portMAX_DELAY);
-        core->onFrame(f, millis());
-        xSemaphoreGive(mtx);
       }
-      continue;   // vacía la cola antes de hacer otras tareas
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(5));
     }
     uint32_t now = millis();
-    if (!canRunning) vTaskDelay(pdMS_TO_TICKS(5));
 
-    // Alertas del controlador CAN
-    uint32_t alerts;
+    // 2) Alertas del controlador CAN
+    uint32_t alerts = 0;
     if (canRunning && twai_read_alerts(&alerts, 0) == ESP_OK) {
       bool count = !frozen;
       if (alerts & TWAI_ALERT_BUS_OFF) { if (count) alBusOff++; twState = "bus-off"; twai_initiate_recovery(); }
       if (alerts & TWAI_ALERT_ERR_PASS) { if (count) alErrPass++; twState = "error-pasivo"; }
-      if (alerts & TWAI_ALERT_BUS_RECOVERED) { if (count) alRecovered++; twai_start(); twState = "running"; }
-      if (alerts & TWAI_ALERT_ERR_ACTIVE) twState = "running";
+      if (alerts & TWAI_ALERT_BUS_RECOVERED) { if (count) alRecovered++; twai_start(); twState = "funcionando"; }
+      if (alerts & TWAI_ALERT_ERR_ACTIVE) twState = "funcionando";
     }
+    twai_status_info_t st = {};
+    bool gotSt = canRunning && now - lastSt >= 100 && twai_get_status_info(&st) == ESP_OK;
+    if (gotSt) lastSt = now;
 
+    // 3) Análisis y peticiones (con el mutex tomado poco tiempo)
     xSemaphoreTake(mtx, portMAX_DELAY);
+    if (!frozen) for (int i = 0; i < n; i++) core->onFrame(batch[i], now);
+    if (gotSt && !frozen) twNow = st;
     if (!frozen) core->tick(now);
-    // Dirección propia
-    if (activeMode && !frozen) {
+    if (activeMode && !frozen && diagRunning) {
       if (core->claimLost) {
         core->claimLost = false;
         uint8_t a = core->ownAddr;
         for (int i = 0; i < 250; i++) { a = (a == 0) ? 251 : a - 1; if (!core->dev[a].seen) break; }
         core->ownAddr = a; sendClaim();
       }
-      if (core->answerClaimRequest) { core->answerClaimRequest = false; sendClaim(); }
-      if (diagRunning) activeSchedule(now - diagStart);
+      // solo contestamos si ya hemos reclamado dirección en este diagnóstico
+      if (core->answerClaimRequest) { core->answerClaimRequest = false; if (claimed) sendClaim(); }
+      activeSchedule(now - diagStart, now);
+    } else {
+      core->answerClaimRequest = false; core->claimLost = false;
     }
     // Fin del diagnóstico
     if (diagRunning && now - diagStart >= diagDur) {
       diagRunning = false; frozen = true;
-      if (canRunning) twai_get_status_info(&twEnd);   // congela los contadores de errores
+      if (canRunning) twai_get_status_info(&twNow);
+      twEnd = twNow;   // congela los contadores de errores
     }
     xSemaphoreGive(mtx);
 
-    // Tensión cada 50 ms
+    // 4) Comandos de la web
+    applyCommand(now);
+
+    // 5) Tensión cada 50 ms (media de 8 lecturas calibradas)
     if (now - lastV >= 50 && !frozen) {
       lastV = now;
       uint32_t mv = 0;
-      for (int i = 0; i < 4; i++) mv += analogReadMilliVolts(VSENSE_PIN);
-      float v = (mv / 4) * VDIV / 1000.0f;
+      for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(VSENSE_PIN);
+      float v = (mv / 8) * VDIV / 1000.0f;
+      xSemaphoreTake(mtx, portMAX_DELAY);
       vNow = v;
-      if (v > 4.0f) { if (v < vMin) vMin = v; if (v > vMax) vMax = v; vSum += v; vN++; }
+      if (v > 4.0f) {
+        if (v < vMin) vMin = v;
+        if (v > vMax) vMax = v;
+        // inestabilidad = salto respecto a la media del último segundo (un mal
+        // contacto da saltos bruscos; la carga del alternador sube despacio)
+        if (vN == 0) vEma = v;
+        float dv = fabsf(v - vEma);
+        if (vN >= 20 && dv > vDev) vDev = dv;
+        vEma += (v - vEma) * 0.05f;
+        vSum += v; vN++;
+      }
+      xSemaphoreGive(mtx);
     }
     digitalWrite(LED_PIN, diagRunning ? ((now / 150) & 1) : (core->bus.frames > 0 && ((now / 1000) & 1)));
+    if (n == 0) taskYIELD();
   }
 }
 
-void startDiag(uint32_t durMs, bool active) {
-  xSemaphoreTake(mtx, portMAX_DELAY);
-  frozen = true;   // pausa mientras se reconfigura
-  xSemaphoreGive(mtx);
-  if (active != activeMode || !canRunning) { activeMode = active; canStart(active); }
-  xSemaphoreTake(mtx, portMAX_DELAY);
-  uint32_t now = millis();
-  core->reset(now);
-  vMin = 99; vMax = 0; vSum = 0; vN = 0;
-  alBusOff = alErrPass = alRecovered = 0;
-  twai_get_status_info(&twBase);
-  diagStart = now; diagDur = durMs; reqStep = 0;
-  diagRunning = true; frozen = false;
-  xSemaphoreGive(mtx);
+// Pide un comando a la tarea CAN y espera (máx. 1,5 s) a que lo aplique
+bool runCommand(int cmd, uint32_t durMs, bool active) {
+  cmdDurMs = durMs; cmdActive = active;
+  uint32_t seq = cmdSeq + 1;
+  cmdSeq = seq;
+  cmdPending = cmd;
+  uint32_t t0 = millis();
+  while (cmdDone != seq && millis() - t0 < 1500) delay(2);
+  return cmdDone == seq;
 }
 
 // ---------------- Web ----------------
-static void appendOut(void* ctx, const char* s, size_t n) { ((String*)ctx)->concat(s, n); }
+static void chunkOut(void*, const char* s, size_t n) { server.chunkWrite(s, n); }
+static void lockFn(void*, bool on) { if (on) xSemaphoreTake(mtx, portMAX_DELAY); else xSemaphoreGive(mtx); }
 
 void handleSnapshot() {
-  twai_status_info_t st = {};
-  if (canRunning) twai_get_status_info(&st);
-  if (frozen && diagStart && !diagRunning) st = twEnd;
+  bool lite = server.hasArg("lite");
   uint32_t now = millis();
-  char live[640];
+  char live[700];
+  xSemaphoreTake(mtx, portMAX_DELAY);
+  bool done = frozen && diagStart && !diagRunning;
+  twai_status_info_t st = done ? twEnd : twNow;
   bool vok = vN > 0;
   uint32_t el = diagStart ? ((diagRunning ? now : diagStart + diagDur) - diagStart) : 0;
+  // si está congelado, el "ahora" del análisis es el final del diagnóstico
+  uint32_t t = done ? diagStart + diagDur : now;
   snprintf(live, sizeof(live),
     "\"live\":{\"fw\":\"" FW_VERSION "\",\"mode\":\"%s\",\"frozen\":%d,\"up\":%u,"
     "\"diag\":{\"running\":%d,\"elapsed\":%u,\"duration\":%u,\"done\":%d},"
-    "\"v\":{\"now\":%.2f,\"min\":%.2f,\"max\":%.2f,\"avg\":%.2f,\"ok\":%d},"
+    "\"v\":{\"now\":%.2f,\"min\":%.2f,\"max\":%.2f,\"avg\":%.2f,\"dev\":%.2f,\"ok\":%d,\"n\":%u},"
     "\"twai\":{\"state\":\"%s\",\"tec\":%u,\"rec\":%u,\"busErr\":%u,\"missed\":%u,\"overrun\":%u,\"arbLost\":%u,\"txFailed\":%u},"
-    "\"alerts\":{\"busOff\":%u,\"errPass\":%u,\"recovered\":%u},\"ownTx\":%u,\"ownTxFail\":%u}",
+    "\"alerts\":{\"busOff\":%u,\"errPass\":%u,\"recovered\":%u},\"ownTx\":%u,\"ownTxFail\":%u,\"heap\":%u}",
     activeMode ? "active" : "passive", frozen ? 1 : 0, (unsigned)(now / 1000),
-    diagRunning ? 1 : 0, (unsigned)el, (unsigned)diagDur, (!diagRunning && frozen && diagStart) ? 1 : 0,
-    vNow, vok ? vMin : 0, vok ? vMax : 0, vok ? (float)(vSum / vN) : 0, vok ? 1 : 0,
+    diagRunning ? 1 : 0, (unsigned)el, (unsigned)diagDur, done ? 1 : 0,
+    vNow, vok ? vMin : 0, vok ? vMax : 0, vok ? (float)(vSum / vN) : 0, vok ? vDev : 0, vok ? 1 : 0, (unsigned)vN,
     twState, (unsigned)st.tx_error_counter, (unsigned)st.rx_error_counter,
     (unsigned)(st.bus_error_count - twBase.bus_error_count), (unsigned)(st.rx_missed_count - twBase.rx_missed_count),
     (unsigned)(st.rx_overrun_count - twBase.rx_overrun_count), (unsigned)(st.arb_lost_count - twBase.arb_lost_count),
     (unsigned)(st.tx_failed_count - twBase.tx_failed_count),
     (unsigned)alBusOff, (unsigned)alErrPass, (unsigned)alRecovered,
-    (unsigned)core->bus.ownTx, (unsigned)core->bus.ownTxFail);
-  String out;
-  out.reserve(24000);
-  xSemaphoreTake(mtx, portMAX_DELAY);
-  // si está congelado, el "ahora" del análisis es el final del diagnóstico
-  uint32_t t = (frozen && diagStart && !diagRunning) ? diagStart + diagDur : now;
-  core->writeJson(appendOut, &out, t, live);
+    (unsigned)core->bus.ownTx, (unsigned)core->bus.ownTxFail, (unsigned)ESP.getFreeHeap());
   xSemaphoreGive(mtx);
+  // Se envía por trozos: no hace falta un búfer enorme y el mutex solo se toma
+  // para copiar cada registro (la tarea CAN no se queda esperando a la Wi-Fi)
   server.sendHeader("Cache-Control", "no-store");
-  server.send(200, "application/json", out);
+  server.chunkResponseBegin("application/json");
+  core->writeJson(chunkOut, nullptr, t, live, lockFn, nullptr, lite);
+  server.chunkResponseEnd();
 }
 
 void handleStart() {
-  uint32_t dur = server.hasArg("dur") ? server.arg("dur").toInt() : 60;
-  if (dur < 10) dur = 10; if (dur > 900) dur = 900;
+  long d = server.hasArg("dur") ? server.arg("dur").toInt() : 60;
+  if (d < 10) d = 10;
+  if (d > 900) d = 900;
   bool active = !(server.hasArg("mode") && server.arg("mode") == "passive");
-  startDiag(dur * 1000, active);
-  server.send(200, "application/json", "{\"ok\":1}");
+  if (runCommand(CMD_START, (uint32_t)d * 1000, active)) server.send(200, "application/json", "{\"ok\":1}");
+  else server.send(503, "application/json", "{\"ok\":0}");
 }
 
 void handleResume() {
-  xSemaphoreTake(mtx, portMAX_DELAY);
-  core->reset(millis()); vMin = 99; vMax = 0; vSum = 0; vN = 0;
-  alBusOff = alErrPass = alRecovered = 0;
-  twai_get_status_info(&twBase);
-  diagRunning = false; diagStart = 0; frozen = false;
-  xSemaphoreGive(mtx);
+  runCommand(CMD_RESUME, 0, false);
   server.send(200, "application/json", "{\"ok\":1}");
 }
 
 void sendAsset(const uint8_t* data, size_t len, const char* type, bool cache) {
   server.sendHeader("Content-Encoding", "gzip");
-  server.sendHeader("Cache-Control", cache ? "max-age=604800" : "no-cache");
+  server.sendHeader("Cache-Control", cache ? "max-age=604800, immutable" : "no-cache");
   server.send_P(200, type, (const char*)data, len);
+}
+
+static String otaErrorText() {
+  switch (Update.getError()) {
+    case UPDATE_ERROR_MAGIC_BYTE: return "El archivo no es un firmware de ESP32 (¿has elegido el .bin completo en vez del de actualización?)";
+    case UPDATE_ERROR_SPACE: case UPDATE_ERROR_SIZE: return "El archivo es demasiado grande para este aparato";
+    case UPDATE_ERROR_READ: case UPDATE_ERROR_ACTIVATE: return "El firmware está dañado o incompleto. Vuelve a descargarlo";
+    case UPDATE_ERROR_WRITE: case UPDATE_ERROR_ERASE: return "Error al escribir en la memoria del aparato";
+    case UPDATE_ERROR_ABORT: return "Actualización cancelada";
+    default: return String("Error de actualización (") + Update.errorString() + ")";
+  }
 }
 
 void handleUpdateUpload() {
   HTTPUpload& up = server.upload();
   if (up.status == UPLOAD_FILE_START) {
     otaOk = false; otaErr = "";
-    xSemaphoreTake(mtx, portMAX_DELAY); frozen = true; diagRunning = false; xSemaphoreGive(mtx);  // pausa el análisis
-    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) otaErr = Update.errorString();
+    otaWasFrozen = frozen;
+    runCommand(CMD_PAUSE, 0, false);   // pausa el análisis
+    if (Update.isRunning()) Update.abort();
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) otaErr = otaErrorText();
   } else if (up.status == UPLOAD_FILE_WRITE) {
-    if (otaErr.length() == 0 && Update.write(up.buf, up.currentSize) != up.currentSize) otaErr = Update.errorString();
+    if (otaErr.length() == 0 && Update.write(up.buf, up.currentSize) != up.currentSize) {
+      otaErr = otaErrorText(); Update.abort();
+    }
   } else if (up.status == UPLOAD_FILE_END) {
-    if (otaErr.length() == 0) { if (Update.end(true)) otaOk = true; else otaErr = Update.errorString(); }
+    if (otaErr.length() == 0) {
+      if (up.totalSize < 100000) { otaErr = "Archivo demasiado pequeño: no es un firmware"; Update.abort(); }
+      else if (Update.end(true)) otaOk = true;
+      else otaErr = otaErrorText();
+    }
   } else if (up.status == UPLOAD_FILE_ABORTED) {
     Update.abort(); otaErr = "Subida cancelada";
   }
@@ -282,12 +416,14 @@ void handleUpdateUpload() {
 
 void handleUpdateDone() {
   if (otaOk) {
-    server.send(200, "text/plain", "OK");
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain; charset=utf-8", "OK");
     delay(800);
     ESP.restart();
   } else {
-    server.send(500, "text/plain", otaErr.length() ? otaErr : String("Archivo no valido"));
-    xSemaphoreTake(mtx, portMAX_DELAY); frozen = false; xSemaphoreGive(mtx);
+    server.send(500, "text/plain; charset=utf-8", otaErr.length() ? otaErr : String("Archivo no válido"));
+    // el análisis queda congelado; si estaba en directo, vuelve a la vista en directo
+    if (!otaWasFrozen) runCommand(CMD_RESUME, 0, false);
   }
 }
 
@@ -306,6 +442,7 @@ void setup() {
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASS);
+  WiFi.setSleep(false);   // respuesta más rápida en el iPhone
   MDNS.begin("n2k");
   MDNS.addService("http", "tcp", 80);
 
@@ -317,12 +454,12 @@ void setup() {
   server.on("/api/resume", handleResume);
   server.on("/update", []() { sendAsset(UPDATE_HTML_GZ, sizeof(UPDATE_HTML_GZ), "text/html; charset=utf-8", false); });
   server.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
-  server.onNotFound([]() { server.sendHeader("Location", "/"); server.send(302); });
+  server.onNotFound([]() { server.sendHeader("Location", "http://192.168.4.1/"); server.send(302, "text/plain", ""); });
   server.begin();
 
-  canStart(true);
-  xTaskCreatePinnedToCore(canTask, "can", 8192, nullptr, 5, nullptr, 0);
-  Serial.printf("N2K Diagnostico listo. Wi-Fi %s  ->  http://%s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+  // Tarea CAN en el núcleo 1 (el 0 es de la Wi-Fi) con más prioridad que la web
+  xTaskCreatePinnedToCore(canTask, "can", 6144, nullptr, 5, nullptr, 1);
+  Serial.printf("N2K Diagnostico v%s listo. Wi-Fi %s  ->  http://%s\n", FW_VERSION, AP_SSID, WiFi.softAPIP().toString().c_str());
 }
 
 void loop() {
@@ -331,5 +468,5 @@ void loop() {
     esp_ota_mark_app_valid_cancel_rollback();
     otaValidated = true;
   }
-  delay(2);
+  delay(1);
 }

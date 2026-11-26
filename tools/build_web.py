@@ -9,9 +9,19 @@ dist = os.path.join(root, 'dist'); os.makedirs(dist, exist_ok=True)
 
 def rd(p): return open(os.path.join(web, p), encoding='utf-8').read()
 
+def slim(code):
+    # minificación segura: quita sangrías, líneas vacías y comentarios de línea completa
+    out = []
+    for ln in code.split('\n'):
+        t = ln.strip()
+        if not t or t.startswith('//'):
+            continue
+        out.append(t)
+    return '\n'.join(out)
+
 html = rd('index.html')
-html = html.replace('<link rel="stylesheet" href="style.css">', '<style>' + rd('style.css') + '</style>')
-def inline(m): return '<script>' + rd(m.group(1)).replace('</script', '<\\/script') + '</script>'
+html = html.replace('<link rel="stylesheet" href="style.css">', '<style>' + slim(rd('style.css')) + '</style>')
+def inline(m): return '<script>' + slim(rd(m.group(1))).replace('</script', '<\\/script') + '</script>'
 html = re.sub(r'<script src="((?:lookups|analyze|report|app)\.js)"></script>', inline, html)
 open(os.path.join(dist, 'index.html'), 'w', encoding='utf-8').write(html)
 

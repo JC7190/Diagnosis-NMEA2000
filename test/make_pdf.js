@@ -1,6 +1,6 @@
 const path = require('path');
-const { jsPDF } = require('/tmp/js/node_modules/jspdf');
-const at = require('/tmp/js/node_modules/jspdf-autotable');
+const { jsPDF } = require('jspdf');
+const at = require('jspdf-autotable');
 (at.applyPlugin || at.default.applyPlugin)(jsPDF);
 const A = require('../web/analyze.js');
 const R = require('../web/report.js');

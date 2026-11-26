@@ -18,6 +18,10 @@ Herramienta de taller que se conecta a una red NMEA 2000, la analiza y genera un
 2. Arduino IDE o arduino-cli con el core **esp32 3.3.x**, placa *ESP32 Dev Module*:
    `arduino-cli compile -b esp32:esp32:esp32:PartitionScheme=min_spiffs firmware/n2kdiag` (partición con OTA)
 
+## Binarios (carpeta `release/`)
+- `Diagnostico_N2K_firmware.bin`: completo, grabar por USB en 0x0 (primera vez).
+- `Diagnostico_N2K_actualizacion_vX.Y.bin`: actualización por Wi-Fi desde http://192.168.4.1/update
+
 ## Pines
 | ESP32 | Conexión |
 |---|---|
@@ -32,7 +36,8 @@ Herramienta de taller que se conecta a una red NMEA 2000, la analiza y genera un
 cd test
 g++ -std=c++17 -I../firmware/n2kdiag sim.cpp ../firmware/n2kdiag/n2k_core.cpp -o sim && ./sim > snapshot.json
 node make_pdf.js ./snapshot.json 120 informe.pdf   # necesita jspdf y jspdf-autotable
-python3 mock_server.py 8765                        # web en http://127.0.0.1:8765
+node run_tests.js                                  # pruebas automáticas (3 redes simuladas)
+python3 mock_server.py 8765                        # web en http://127.0.0.1:8765 (node ui_test.js para la prueba de UI)
 ```
 
 Tablas de fabricantes y PGNs: proyecto canboat (Apache-2.0). PDF: jsPDF + jspdf-autotable (MIT).

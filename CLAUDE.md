@@ -10,8 +10,16 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.1** completo y compilando (≈1,19 MB, 60 % de la partición `min_spiffs`). **No se ha probado aún en hardware real**: el material acaba de llegar y se está montando.
-- Probado en PC: simulador de red con averías → JSON → `analyze.js` → PDF. UI probada con Playwright contra un servidor mock.
+- Firmware **v1.2** (revisión a fondo) compilando con core esp32 3.3.13 (≈1,20 MB, 60 % de `min_spiffs`). **No se ha probado aún en hardware real.**
+- Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
+- Binarios listos en `release/`.
+
+### Cambios de la v1.2 (resumen)
+- El driver TWAI solo se toca desde la tarea CAN (antes la web lo reinstalaba en paralelo → posible cuelgue). La tarea CAN va en el **núcleo 1**, procesa tramas por lotes y siempre hace sus tareas periódicas aunque la red vaya llena.
+- Al arrancar y tras "Nueva prueba" el aparato está en **solo escucha**; solo transmite durante una prueba completa. Solo contesta a peticiones de dirección si ya ha reclamado una.
+- `/api/snapshot` se envía por trozos (chunked) tomando el mutex solo para copiar cada registro; `?lite=1` omite la tabla de PGN (la app la usa en directo).
+- Fast packet: un error por mensaje roto (no uno por trozo), 1 s de gracia al empezar, 96 huecos. En redes de más de 24 equipos las peticiones 126996/126998 van dirigidas y espaciadas 20 ms.
+- Diagnóstico sin falsos positivos: reinicios solo si el mismo NAME se reanuncia tras silencio y sin petición de nadie; conflictos solo si la dirección cambia de dueño repetidamente; alarmas de motor "normales con motor parado" (aceite, carga…) solo cuentan con rpm > 300; instancias de temperatura con su fuente; baterías de 24/36/48 V; HDOP/LEN "no disponible"; equipos que cambian de dirección o mandan ráfagas (AIS).
 - Actualización por Wi-Fi (OTA) con rollback automático ya implementada.
 
 ## Qué se te pide (Claude Code)
@@ -55,7 +63,7 @@ Cable NMEA 2000 (Micro-C): rojo +12 V (con fusible 1 A), negro GND, blanco CAN-H
 
 ```
 firmware/n2kdiag/
-  n2kdiag.ino      TWAI 250 kbps, tarea CAN en core 0 con mutex, WebServer, softAP, mDNS, OTA
+  n2kdiag.ino      TWAI 250 kbps, tarea CAN en core 1 con mutex (dueña única del driver), WebServer, softAP, mDNS, OTA
   n2k_core.h/.cpp  Núcleo de análisis (compila también en PC): dispositivos, PGNs, fast-packet,
                    address claim / NAME, product info, config info, heartbeat, estadísticas del bus
   fast_pgns.h      Generado (lista de PGNs fast-packet desde canboat)
@@ -71,15 +79,16 @@ tools/
   build_web.py    Inlinea index+css+js en dist/index.html y genera web_assets.h (gzip)
   gen_data.py     canboat.json → fast_pgns.h + lookups.js  (uso: gen_data.py canboat.json .)
 test/
-  sim.cpp         Red simulada con averías → snapshot JSON
+  sim.cpp         Red simulada (averias | limpia | grande) → snapshot JSON
+  run_tests.js    Pruebas automáticas del núcleo y del diagnóstico
   make_pdf.js     Genera PDF de ejemplo desde un snapshot
   mock_server.py  Sirve la web + snapshot en :8765
-  ui_test.py      Playwright (Chrome) recorre la UI
+  ui_test.js      Playwright (iPhone) recorre la UI
 ```
 
 ### Red y endpoints
 - Wi-Fi AP `N2K-Diagnostico` / clave `nmea2000`, IP `192.168.4.1`, mDNS `n2k.local`.
-- `GET /` UI · `GET /jspdf.js`, `/autotable.js` · `GET /api/snapshot` (JSON completo + bloque `live`)
+- `GET /` UI · `GET /jspdf.js`, `/autotable.js` · `GET /api/snapshot` (JSON completo + bloque `live`; `?lite=1` sin PGNs)
 - `GET /api/start?dur=<s>&mode=active|passive` · `GET /api/resume`
 - `GET /update` · `POST /api/update` (multipart, campo `firmware`)
 
@@ -119,7 +128,8 @@ Grabación inicial: https://espressif.github.io/esptool-js en Chrome, dirección
 cd test
 g++ -std=c++17 -I../firmware/n2kdiag sim.cpp ../firmware/n2kdiag/n2k_core.cpp -o sim && ./sim > snapshot.json
 npm i jspdf jspdf-autotable && node make_pdf.js ./snapshot.json 120 informe.pdf
-python3 mock_server.py 8765   # y python3 ui_test.py
+node run_tests.js              # simulador + diagnóstico (3 escenarios)
+python3 mock_server.py 8765   # y node ui_test.js <carpeta> (Playwright)
 ```
 
 ---

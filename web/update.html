@@ -33,7 +33,7 @@ button:disabled{filter:grayscale(1) brightness(.6)}
   <p class="ver">Versión instalada: <b id="v">…</b></p>
   <div class="card">
     <ol>
-      <li>Guarda en el iPhone el archivo <b>.bin</b> de actualización que te he pasado.</li>
+      <li>Guarda en el iPhone el archivo <b>Diagnostico_N2K_actualizacion_vX.Y.bin</b> (no el de grabar por USB).</li>
       <li>Toca abajo para elegirlo desde <b>Archivos</b>.</li>
       <li>Pulsa <b>Instalar</b> y no cierres esta página hasta que termine.</li>
     </ol>
@@ -46,23 +46,39 @@ button:disabled{filter:grayscale(1) brightness(.6)}
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
-fetch('/api/snapshot', { cache: 'no-store' }).then((r) => r.json()).then((s) => { $('#v').textContent = (s.live && s.live.fw) || '-'; }).catch(() => { $('#v').textContent = '-'; });
+fetch('/api/snapshot?lite=1', { cache: 'no-store' }).then((r) => r.json()).then((s) => { $('#v').textContent = (s.live && s.live.fw) || '-'; }).catch(() => { $('#v').textContent = '-'; });
 $('#file').onchange = () => {
   const f = $('#file').files[0];
   $('#pickTxt').textContent = f ? `${f.name} (${Math.round(f.size / 1024)} KB)` : 'Elegir archivo .bin';
   $('#pick').classList.toggle('has', !!f);
   $('#go').disabled = !f;
 };
-$('#go').onclick = () => {
+$('#go').onclick = async () => {
   const f = $('#file').files[0]; if (!f) return;
   const msg = (t, c) => { $('#msg').textContent = t; $('#msg').style.color = c || ''; };
-  if (f.size < 100000 || f.size > 1966080) return msg('Ese archivo no parece un firmware válido', 'var(--fail)');
-  $('#go').disabled = true; $('#bar').style.display = 'block'; msg('Enviando…');
+  if (f.size < 100000 || f.size > 1966080) return msg('Ese archivo no parece un firmware de actualización', 'var(--fail)');
+  // un firmware de ESP32 empieza por el byte 0xE9; el .bin completo (para USB) no
+  try {
+    const b = new Uint8Array(await f.slice(0, 1).arrayBuffer());
+    if (b[0] !== 0xE9) return msg('Ese es el .bin completo para USB o no es un firmware. Elige el archivo de actualización.', 'var(--fail)');
+  } catch (e) { /* navegadores antiguos: lo comprueba el aparato */ }
+  $('#go').disabled = true; $('#bar').style.display = 'block'; $('#fill').style.width = '0'; msg('Enviando…');
   const fd = new FormData(); fd.append('firmware', f, f.name);
   const x = new XMLHttpRequest();
   x.upload.onprogress = (e) => { if (e.lengthComputable) { const p = Math.round(e.loaded / e.total * 100); $('#fill').style.width = p + '%'; msg(p < 100 ? `Enviando… ${p} %` : 'Instalando…'); } };
   x.onload = () => {
-    if (x.status === 200) { $('#fill').style.width = '100%'; msg('✓ Instalado. El aparato se reinicia: vuelve a conectarte a la Wi-Fi en unos segundos.', 'var(--ok)'); setTimeout(() => { location.href = '/'; }, 12000); }
+    if (x.status === 200) {
+      $('#fill').style.width = '100%';
+      msg('✓ Instalado. El aparato se está reiniciando…', 'var(--ok)');
+      // espera a que vuelva y abre la app (si el iPhone cambia de Wi-Fi, vuelve a conectarte a N2K-Diagnostico)
+      let n = 0;
+      const tryBack = () => {
+        fetch('/api/snapshot?lite=1', { cache: 'no-store' }).then((r) => r.json()).then((s) => {
+          msg(`✓ Actualizado a la versión ${(s.live && s.live.fw) || ''}`, 'var(--ok)'); setTimeout(() => { location.href = '/'; }, 1500);
+        }).catch(() => { if (++n < 40) setTimeout(tryBack, 1500); else msg('✓ Instalado. Vuelve a conectarte a la Wi-Fi N2K-Diagnostico y abre http://192.168.4.1', 'var(--ok)'); });
+      };
+      setTimeout(tryBack, 5000);
+    }
     else { msg('Error: ' + (x.responseText || x.status), 'var(--fail)'); $('#go').disabled = false; }
   };
   x.onerror = () => { msg('Se perdió la conexión durante la actualización. El aparato sigue con la versión anterior.', 'var(--fail)'); $('#go').disabled = false; };

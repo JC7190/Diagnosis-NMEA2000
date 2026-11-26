@@ -4,32 +4,56 @@
   const $$ = (s) => [...document.querySelectorAll(s)];
   const fmt = N2K.fmt;
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const S = { dur: 60, mode: 'active', snap: null, result: null, timer: null, failCount: 0, finishing: false };
+  const S = { dur: 60, mode: 'active', snap: null, result: null, timer: null, gen: 0, pollMs: 0, failCount: 0, finishing: false, first: true, pdfUrl: null };
 
   function show(id) {
     $$('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
     window.scrollTo(0, 0);
   }
-  function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 2600); }
+  let toastT = null;
+  function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove('show'), 3200); }
 
-  async function api(path) {
-    const r = await fetch(path, { cache: 'no-store' });
-    if (!r.ok) throw new Error(r.status);
-    return r.json();
+  // Petición con tiempo límite (si la Wi-Fi se corta, no se queda colgada)
+  async function api(path, ms) {
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const to = ctl ? setTimeout(() => ctl.abort(), ms || 10000) : null;
+    try {
+      const r = await fetch(path, { cache: 'no-store', signal: ctl ? ctl.signal : undefined });
+      if (!r.ok) throw new Error(r.status);
+      return await r.json();
+    } finally { if (to) clearTimeout(to); }
   }
 
   // ---------- sondeo ----------
+  // Se pide la versión ligera (sin tabla de mensajes) y no se lanza la siguiente
+  // petición hasta que acaba la anterior: no se acumulan en el ESP32.
   async function poll() {
+    clearTimeout(S.timer); S.timer = null;
+    const gen = S.gen;
     try {
-      const s = await api('/api/snapshot');
+      const s = await api('/api/snapshot?lite=1', 8000);
+      if (gen !== S.gen) return;   // se ha cambiado de pantalla mientras tanto
       S.snap = s; S.failCount = 0;
       $('#conn').className = 'pill on'; $('#conn').textContent = 'Conectado';
+      if (S.first) { S.first = false; restore(s); }
       render(s);
     } catch (e) {
+      if (gen !== S.gen) return;
       if (++S.failCount > 1) { $('#conn').className = 'pill off'; $('#conn').textContent = 'Sin conexión'; }
     }
+    if (gen === S.gen && S.pollMs && !document.hidden) S.timer = setTimeout(poll, S.pollMs);
   }
-  function startPolling(ms) { clearInterval(S.timer); S.timer = setInterval(poll, ms); poll(); }
+  function startPolling(ms) { S.gen++; S.pollMs = ms; clearTimeout(S.timer); S.timer = null; poll(); }
+  function stopPolling() { S.gen++; S.pollMs = 0; clearTimeout(S.timer); S.timer = null; }
+  // en segundo plano no se pregunta nada (ahorra batería); al volver, se sigue
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.pollMs && !S.timer) poll(); });
+
+  // Si se recarga la página a mitad de una prueba, se vuelve a la pantalla que toca
+  function restore(s) {
+    const d = (s.live || {}).diag || {};
+    if (d.running) { S.finishing = false; S.startedAt = new Date(Date.now() - (d.elapsed || 0)); show('running'); S.pollMs = 1000; }
+    else if (d.done && $('#home').classList.contains('active')) { S.finishing = true; stopPolling(); show('term'); }
+  }
 
   function render(s) {
     const L = s.live || {}, b = s.bus || {}, tw = L.twai || {}, d = L.diag || {};
@@ -39,24 +63,29 @@
     // inicio
     const tile = (id, val, cls) => { const el = $(id); el.textContent = val; el.parentElement.classList.remove('bad', 'mid', 'good'); if (cls) el.parentElement.classList.add(cls); };
     tile('#tV', v.now > 4 ? fmt(v.now, 1) + ' V' : '—', v.now > 4 ? (v.now < 10.5 ? 'bad' : v.now < 11.5 ? 'mid' : 'good') : null);
-    $('#tVs').textContent = v.ok ? `mín ${fmt(v.min, 1)} · máx ${fmt(v.max, 1)}` : 'sin sensor';
+    $('#tVs').textContent = v.ok ? `mín ${fmt(v.min, 1)} · máx ${fmt(v.max, 1)}` : 'sin lectura';
     tile('#tLoad', fmt(b.loadNow, 0) + ' %', b.loadNow > 70 ? 'bad' : b.loadNow > 40 ? 'mid' : null);
     $('#tLoads').textContent = `pico ${fmt(b.loadPeak, 0)} %`;
-    tile('#tDev', String(devs.length));
-    const er = b.frames ? (tw.busErr || 0) / b.frames * 100 : 0;
-    tile('#tErr', String(tw.busErr || 0), er > 3 ? 'bad' : er > 0.3 ? 'mid' : b.frames ? 'good' : null);
-    $('#tErrs').textContent = `CAN ${tw.state || '-'}`;
+    tile('#tDev', String(devs.filter((x) => x.sa !== 254).length));
+    const busErr = tw.busErr || 0;
+    const er = b.frames ? busErr / (b.frames + busErr) * 100 : 0;
+    tile('#tErr', String(busErr), er > 3 ? 'bad' : er > 0.3 ? 'mid' : b.frames ? 'good' : null);
+    $('#tErrs').textContent = b.frames ? `${fmt(er, 2)} % · ${tw.state || '-'}` : `CAN ${tw.state || '-'}`;
     const list = $('#liveDevs');
-    if (!devs.length) list.innerHTML = `<div class="empty">${b.frames ? 'Recibiendo tramas…' : 'Esperando datos de la red…'}</div>`;
-    else list.innerHTML = devs.map((x) => {
+    let html;
+    if (!devs.length) html = `<div class="empty">${b.frames ? 'Recibiendo tramas…' : 'Esperando datos de la red…'}</div>`;
+    else html = devs.map((x) => {
       const nm = N2K.decodeName(x.name), pi = N2K.decodePI(x.pi);
       const typical = x.frames > 1 ? (x.last - x.first) / (x.frames - 1) : 0;
-      const silent = s.dur - x.last > Math.max(5000, typical * 3 + 1000);
-      const mfr = nm ? (LK.mfr[nm.mfr] || 'Fabricante ' + nm.mfr) : '';
-      return `<div class="dev"><div class="ic">${x.sa}</div><div class="tx"><b>${esc(pi ? pi.model : mfr)}</b>
+      // callado = lleva sin hablar bastante más que su silencio habitual
+      const silent = s.dur - x.last > Math.max(5000, typical * 3 + 1000, (x.maxGap || 0) * 2 + 1000);
+      const mfr = nm ? (LK.mfr[nm.mfr] || 'Fabricante ' + nm.mfr) : 'Sin identificar';
+      const title = pi && pi.model ? pi.model : mfr;
+      return `<div class="dev"><div class="ic">${x.sa}</div><div class="tx"><b>${esc(title)}</b>
         <small>${esc(mfr)}${pi && pi.sw ? ' · SW ' + esc(pi.sw) : ''}</small></div>
         <div class="st ${silent ? 'warn' : 'ok'}">${silent ? 'Callado' : 'Activo'}</div></div>`;
     }).join('');
+    if (list.dataset.h !== html) { list.innerHTML = html; list.dataset.h = html; }   // sin repintar si no cambia
 
     // en curso
     if ($('#running').classList.contains('active')) {
@@ -68,8 +97,8 @@
       $('#phase').textContent = L.mode === 'active' && el < 3 ? 'Preguntando a los equipos quién es quién…'
         : L.mode === 'active' && el < 22 ? 'Leyendo modelo, software y nº de serie…'
         : 'Vigilando estabilidad, errores y tensión…';
-      $('#rDev').textContent = devs.length; $('#rFr').textContent = b.frames; $('#rErr').textContent = tw.busErr || 0;
-      if (d.done && !S.finishing) { S.finishing = true; clearInterval(S.timer); show('term'); }
+      $('#rDev').textContent = devs.filter((x) => x.sa !== 254).length; $('#rFr').textContent = b.frames || 0; $('#rErr').textContent = busErr;
+      if (d.done && !S.finishing) { S.finishing = true; stopPolling(); show('term'); }
     }
   }
 
@@ -80,25 +109,42 @@
   $$('#optMode button').forEach((b) => b.onclick = () => { $$('#optMode button').forEach((x) => x.classList.remove('on')); b.classList.add('on'); S.mode = b.dataset.v; });
 
   $('#bStart').onclick = async () => {
+    const btn = $('#bStart');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    stopPolling();
     try {
-      $('#bStart').disabled = true;
       await api(`/api/start?dur=${S.dur}&mode=${S.mode}`);
       S.finishing = false; S.startedAt = new Date();
       $('#ringBar').style.strokeDashoffset = 326.7;
+      $('#ringPct').textContent = '0 %'; $('#ringLeft').innerHTML = '&nbsp;';
+      $('#rDev').textContent = '0'; $('#rFr').textContent = '0'; $('#rErr').textContent = '0';
       show('running'); startPolling(1000);
-    } catch (e) { toast('No se pudo iniciar. ¿Estás conectado a la Wi-Fi N2K-Diagnostico?'); }
-    $('#bStart').disabled = false;
+    } catch (e) { toast('No se pudo iniciar. ¿Estás conectado a la Wi-Fi N2K-Diagnostico?'); startPolling(2000); }
+    btn.disabled = false;
   };
 
   $$('#ansTerm button').forEach((b) => b.onclick = async () => {
-    try { S.snap = await api('/api/snapshot'); } catch (e) { /* usa el último */ }
-    S.result = N2K.analyze(S.snap, { term: b.dataset.v, ref: $('#ref').value.trim(), date: S.startedAt || new Date() });
+    const btns = $$('#ansTerm button');
+    if (btns.some((x) => x.disabled)) return;
+    btns.forEach((x) => { x.disabled = true; });
+    b.classList.add('busy');
+    // datos completos (con la tabla de mensajes) solo una vez, al final
+    let snap = null;
+    for (let i = 0; i < 3 && !snap; i++) { try { snap = await api('/api/snapshot', 20000); } catch (e) { /* reintenta */ } }
+    btns.forEach((x) => { x.disabled = false; });
+    b.classList.remove('busy');
+    if (!snap) { toast('No se pudieron leer los resultados. Comprueba la Wi-Fi y vuelve a tocar la respuesta.'); return; }
+    S.snap = snap;
+    S.result = N2K.analyze(snap, { term: b.dataset.v, ref: $('#ref').value.trim(), date: S.startedAt || new Date() });
     renderResult(S.result); show('result');
   });
 
   $('#bNew').onclick = async () => {
-    try { await api('/api/resume'); } catch (e) { }
-    $('#pdfLink').hidden = true; show('home'); startPolling(2000);
+    try { await api('/api/resume'); } catch (e) { /* se reintenta al sondear */ }
+    if (S.pdfUrl) { URL.revokeObjectURL(S.pdfUrl); S.pdfUrl = null; }
+    $('#pdfLink').hidden = true; S.result = null; S.finishing = false;
+    show('home'); startPolling(2000);
   };
 
   // ---------- resultado ----------
@@ -130,17 +176,24 @@
         const doc = N2KReport.build(r, window.jspdf.jsPDF);
         const d = r.date instanceof Date ? r.date : new Date();
         const pad = (n) => String(n).padStart(2, '0');
-        const ref = (r.ref || '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_');
+        const ref = (r.ref || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40);
         const name = `Diagnostico_N2K_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${ref ? '_' + ref : ''}.pdf`;
         doc.save(name);
-        const a = $('#pdfLink'); a.href = doc.output('bloburl'); a.download = name; a.hidden = false;
+        // enlace de respaldo (en algunos iPhone la descarga directa no aparece)
+        if (S.pdfUrl) URL.revokeObjectURL(S.pdfUrl);
+        S.pdfUrl = URL.createObjectURL(doc.output('blob'));
+        const a = $('#pdfLink'); a.href = S.pdfUrl; a.download = name; a.hidden = false;
       } catch (e) { toast('Error al generar el PDF'); console.error(e); }
     };
     if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return go();
-    // carga perezosa de las librerías del PDF
-    const load = (src) => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+    // carga perezosa de las librerías del PDF (solo la primera vez)
+    const load = (src) => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => { s.remove(); ko(); }; document.head.appendChild(s); });
+    const btn = $('#bPdf'); btn.disabled = true;
     toast('Preparando el PDF…');
-    load('jspdf.js').then(() => load('autotable.js')).then(go).catch(() => toast('No se pudo cargar el generador de PDF'));
+    const jspdf = window.jspdf ? Promise.resolve() : load('jspdf.js');
+    jspdf.then(() => (window.jspdf.jsPDF.API.autoTable ? null : load('autotable.js'))).then(go)
+      .catch(() => toast('No se pudo cargar el generador de PDF. Vuelve a intentarlo.'))
+      .finally(() => { btn.disabled = false; });
   };
 
   startPolling(2000);
