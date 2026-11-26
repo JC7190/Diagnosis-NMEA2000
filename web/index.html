@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1622">
+<title>Diagnóstico NMEA 2000</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><svg viewBox="0 0 24 24" class="logo"><path d="M3 12h4l2-6 4 12 2-6h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div><b>N2K</b> Diagnóstico</div></div>
+  <span id="conn" class="pill off">Sin conexión</span>
+</header>
+
+<main>
+  <!-- ===== Inicio / en directo ===== -->
+  <section id="home" class="screen active">
+    <h2 class="eyebrow">Red en directo</h2>
+    <div class="tiles">
+      <div class="tile"><span>Tensión</span><b id="tV">-</b><small id="tVs">&nbsp;</small></div>
+      <div class="tile"><span>Carga de red</span><b id="tLoad">-</b><small id="tLoads">&nbsp;</small></div>
+      <div class="tile"><span>Equipos</span><b id="tDev">-</b><small>&nbsp;</small></div>
+      <div class="tile"><span>Errores CAN</span><b id="tErr">-</b><small id="tErrs">&nbsp;</small></div>
+    </div>
+    <h2 class="eyebrow">Equipos detectados</h2>
+    <div id="liveDevs" class="list"><div class="empty">Esperando datos de la red…</div></div>
+    <div class="spacer"></div>
+    <a class="fwlink" href="/update">Actualizar firmware · <span id="fwv">v-</span></a>
+    <div class="cta"><button class="btn primary big" id="bSetup">Iniciar diagnóstico completo</button></div>
+  </section>
+
+  <!-- ===== Configuración ===== -->
+  <section id="setup" class="screen">
+    <button class="back" data-go="home">‹ Volver</button>
+    <h1>Nuevo diagnóstico</h1>
+    <label class="field"><span>Referencia (opcional)</span>
+      <input id="ref" placeholder="Barco, cliente o nº de ORMA" autocomplete="off"></label>
+    <div class="field"><span>Duración de la prueba</span>
+      <div class="seg" id="segDur">
+        <button data-v="30">30 s</button><button data-v="60" class="on">1 min</button><button data-v="120">2 min</button><button data-v="300">5 min</button>
+      </div>
+      <small class="hint">Para fallos intermitentes, usa 5 minutos y mueve cables y conectores durante la prueba.</small>
+    </div>
+    <div class="field"><span>Tipo de prueba</span>
+      <div class="opt" id="optMode">
+        <button data-v="active" class="on"><b>Completa</b><small>Pide a cada equipo su modelo, software y número de serie. Recomendada.</small></button>
+        <button data-v="passive"><b>Solo escuchar</b><small>No envía nada a la red. Para barcos en uso o si no quieres tocar nada.</small></button>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="cta"><button class="btn primary big" id="bStart">Empezar</button></div>
+  </section>
+
+  <!-- ===== En curso ===== -->
+  <section id="running" class="screen">
+    <h1>Diagnosticando…</h1>
+    <div class="ring">
+      <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" class="track"/><circle cx="60" cy="60" r="52" class="bar" id="ringBar"/></svg>
+      <div class="ringTxt"><b id="ringPct">0 %</b><small id="ringLeft">&nbsp;</small></div>
+    </div>
+    <p class="phase" id="phase">Escuchando la red…</p>
+    <div class="tiles three">
+      <div class="tile"><span>Equipos</span><b id="rDev">0</b></div>
+      <div class="tile"><span>Tramas</span><b id="rFr">0</b></div>
+      <div class="tile"><span>Errores</span><b id="rErr">0</b></div>
+    </div>
+    <p class="hint center">Si buscas un fallo intermitente, mueve ahora cables y conectores o arranca el motor.</p>
+  </section>
+
+  <!-- ===== Terminadores ===== -->
+  <section id="term" class="screen">
+    <h1>Medida de terminadores</h1>
+    <div class="card how">
+      <ol>
+        <li>Apaga la alimentación de la red NMEA 2000.</li>
+        <li>Pon el polímetro en ohmios.</li>
+        <li>Mide entre el pin <b>blanco (CAN-H)</b> y el <b>azul (CAN-L)</b> de una T libre o del conector de un equipo.</li>
+      </ol>
+      <div class="pinrow">
+        <svg viewBox="0 0 80 80" class="conn"><circle cx="40" cy="40" r="34" class="face"/>
+          <circle cx="40" cy="18" r="6" class="p"/><circle cx="62" cy="40" r="6" class="p"/><circle cx="40" cy="62" r="6" class="p"/><circle cx="18" cy="40" r="6" class="p"/>
+          <circle cx="40" cy="40" r="7" class="p p5"/></svg>
+        <ul class="legend">
+          <li><i class="c wht"></i><b>Blanco</b> CAN-H</li>
+          <li><i class="c blu"></i><b>Azul</b> CAN-L <small>(pin central)</small></li>
+          <li><i class="c red"></i>Rojo +12 V · <i class="c blk"></i>Negro GND</li>
+        </ul>
+      </div>
+    </div>
+    <p class="q">¿Qué valor marca el polímetro?</p>
+    <div class="answers" id="ansTerm">
+      <button data-v="60"><b>Unos 60 Ω</b><small>Lo correcto</small></button>
+      <button data-v="120"><b>Unos 120 Ω</b></button>
+      <button data-v="40"><b>40 Ω o menos</b></button>
+      <button data-v="open"><b>Muy alto o infinito</b></button>
+      <button data-v="short"><b>Casi 0 Ω</b></button>
+      <button data-v="skip"><b>No lo he medido</b></button>
+    </div>
+  </section>
+
+  <!-- ===== Resultado ===== -->
+  <section id="result" class="screen">
+    <div id="verdict" class="verdict"></div>
+    <div class="tiles" id="resTiles"></div>
+    <h2 class="eyebrow">Qué hay que hacer</h2>
+    <div id="actions" class="list"></div>
+    <details class="card fold"><summary>Detalle de las comprobaciones</summary><div id="findings"></div></details>
+    <details class="card fold"><summary>Equipos en la red</summary><div id="resDevs"></div></details>
+    <div class="spacer"></div>
+    <div class="cta two">
+      <button class="btn ghost" id="bNew">Nueva prueba</button>
+      <button class="btn primary" id="bPdf">Descargar PDF</button>
+    </div>
+    <a id="pdfLink" class="pdflink" target="_blank" hidden>Abrir el PDF</a>
+  </section>
+</main>
+<div id="toast" class="toast"></div>
+<script src="lookups.js"></script>
+<script src="analyze.js"></script>
+<script src="report.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

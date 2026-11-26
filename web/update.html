@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1622">
+<title>Actualizar firmware</title>
+<style>
+:root{--bg:#0b1622;--card:#152a3e;--line:#24405b;--tx:#e9f0f6;--mu:#8ea4b8;--ac:#1fb8a8;--fail:#ef5350;--ok:#43c463}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(120% 60% at 50% -10%,#173552 0%,var(--bg) 60%);color:var(--tx);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 18px) 18px 30px}
+a.back{color:var(--ac);text-decoration:none}
+h1{font-size:26px;margin:16px 0 6px}
+.ver{color:var(--mu);margin:0 0 22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+ol{margin:0;padding-left:20px;color:var(--mu)} li{margin:5px 0} b{color:var(--tx)}
+.pick{display:block;margin:18px 0 12px;padding:18px;border:2px dashed var(--line);border-radius:14px;text-align:center;color:var(--mu);cursor:pointer}
+.pick.has{border-color:var(--ac);color:var(--tx)}
+input{display:none}
+button{width:100%;border:0;border-radius:14px;padding:17px;font:600 17px -apple-system,sans-serif;background:linear-gradient(135deg,#1fb8a8,#14968a);color:#04201d}
+button:disabled{filter:grayscale(1) brightness(.6)}
+.bar{height:10px;background:#1a3249;border-radius:99px;overflow:hidden;margin:18px 0 8px;display:none}
+.bar i{display:block;height:100%;width:0;background:var(--ac);transition:width .2s}
+#msg{text-align:center;min-height:24px;font-weight:600}
+.warn{margin-top:18px;font-size:14px;color:var(--mu)}
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">‹ Volver</a>
+  <h1>Actualizar firmware</h1>
+  <p class="ver">Versión instalada: <b id="v">…</b></p>
+  <div class="card">
+    <ol>
+      <li>Guarda en el iPhone el archivo <b>.bin</b> de actualización que te he pasado.</li>
+      <li>Toca abajo para elegirlo desde <b>Archivos</b>.</li>
+      <li>Pulsa <b>Instalar</b> y no cierres esta página hasta que termine.</li>
+    </ol>
+  </div>
+  <label class="pick" id="pick"><input type="file" id="file" accept=".bin,application/octet-stream"><span id="pickTxt">Elegir archivo .bin</span></label>
+  <button id="go" disabled>Instalar</button>
+  <div class="bar" id="bar"><i id="fill"></i></div>
+  <p id="msg"></p>
+  <p class="warn">Si la actualización se corta o el firmware nuevo no arranca bien, el aparato vuelve solo a la versión anterior.</p>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+fetch('/api/snapshot', { cache: 'no-store' }).then((r) => r.json()).then((s) => { $('#v').textContent = (s.live && s.live.fw) || '-'; }).catch(() => { $('#v').textContent = '-'; });
+$('#file').onchange = () => {
+  const f = $('#file').files[0];
+  $('#pickTxt').textContent = f ? `${f.name} (${Math.round(f.size / 1024)} KB)` : 'Elegir archivo .bin';
+  $('#pick').classList.toggle('has', !!f);
+  $('#go').disabled = !f;
+};
+$('#go').onclick = () => {
+  const f = $('#file').files[0]; if (!f) return;
+  const msg = (t, c) => { $('#msg').textContent = t; $('#msg').style.color = c || ''; };
+  if (f.size < 100000 || f.size > 1966080) return msg('Ese archivo no parece un firmware válido', 'var(--fail)');
+  $('#go').disabled = true; $('#bar').style.display = 'block'; msg('Enviando…');
+  const fd = new FormData(); fd.append('firmware', f, f.name);
+  const x = new XMLHttpRequest();
+  x.upload.onprogress = (e) => { if (e.lengthComputable) { const p = Math.round(e.loaded / e.total * 100); $('#fill').style.width = p + '%'; msg(p < 100 ? `Enviando… ${p} %` : 'Instalando…'); } };
+  x.onload = () => {
+    if (x.status === 200) { $('#fill').style.width = '100%'; msg('✓ Instalado. El aparato se reinicia: vuelve a conectarte a la Wi-Fi en unos segundos.', 'var(--ok)'); setTimeout(() => { location.href = '/'; }, 12000); }
+    else { msg('Error: ' + (x.responseText || x.status), 'var(--fail)'); $('#go').disabled = false; }
+  };
+  x.onerror = () => { msg('Se perdió la conexión durante la actualización. El aparato sigue con la versión anterior.', 'var(--fail)'); $('#go').disabled = false; };
+  x.open('POST', '/api/update'); x.send(fd);
+};
+</script>
+</body>
+</html>

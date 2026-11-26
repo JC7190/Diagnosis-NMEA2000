@@ -1,0 +1,11 @@
+const path = require('path');
+const { jsPDF } = require('/tmp/js/node_modules/jspdf');
+const at = require('/tmp/js/node_modules/jspdf-autotable');
+(at.applyPlugin || at.default.applyPlugin)(jsPDF);
+const A = require('../web/analyze.js');
+const R = require('../web/report.js');
+const snap = require(process.argv[2] || './snapshot.json');
+const r = A.analyze(snap, { term: process.argv[3] || '120', ref: 'Barco: Prueba taller · ORMA 000000', date: new Date('2026-11-20T17:30:00') });
+const doc = R.build(r, jsPDF);
+require('fs').writeFileSync(process.argv[4] || 'informe.pdf', Buffer.from(doc.output('arraybuffer')));
+console.log('ok', r.verdict, doc.getNumberOfPages());
