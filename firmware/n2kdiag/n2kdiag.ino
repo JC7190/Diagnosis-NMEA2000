@@ -15,7 +15,7 @@
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.7"
+#define FW_VERSION   "1.8"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
@@ -55,6 +55,7 @@ String otaErr;
 n2k::Core* core = nullptr;   // en el heap: es demasiado grande para la RAM estática
 SemaphoreHandle_t mtx;
 WebServer server(80);
+volatile uint32_t httpReqs = 0;   // peticiones atendidas (para el registro por USB)
 
 // Todo lo que toca el driver TWAI se hace SOLO en la tarea CAN. La web pide los
 // cambios con un comando y espera a que la tarea lo aplique.
@@ -369,7 +370,9 @@ void canTask(void*) {
       xSemaphoreGive(mtx);
     }
     digitalWrite(LED_PIN, diagRunning ? ((now / 150) & 1) : (core->bus.frames > 0 && ((now / 1000) & 1)));
-    if (n == 0) taskYIELD();
+    // cede SIEMPRE 1 ms: la web (loop, mismo núcleo, menos prioridad) nunca se queda sin turno.
+    // Con lotes de 32 tramas por ms se procesa mucho más de lo que cabe en una red a 250 kbit/s.
+    vTaskDelay(1);
   }
 }
 
@@ -389,6 +392,7 @@ static void chunkOut(void*, const char* s, size_t n) { server.chunkWrite(s, n); 
 static void lockFn(void*, bool on) { if (on) xSemaphoreTake(mtx, portMAX_DELAY); else xSemaphoreGive(mtx); }
 
 void handleSnapshot() {
+  httpReqs++;
   bool lite = server.hasArg("lite");
   uint32_t now = millis();
   char live[700];
@@ -477,6 +481,7 @@ void handleResume() {
 }
 
 void sendAsset(const uint8_t* data, size_t len, const char* type, bool cache) {
+  httpReqs++;
   server.sendHeader("Content-Encoding", "gzip");
   server.sendHeader("Cache-Control", cache ? "max-age=604800, immutable" : "no-cache");
   server.send_P(200, type, (const char*)data, len);
@@ -569,6 +574,15 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  // Registro de estado por USB cada 5 s (115200 baudios): ayuda a diagnosticar la propia herramienta
+  static uint32_t loops = 0, lastLog = 0;
+  loops++;
+  if (millis() - lastLog >= 5000) {
+    lastLog = millis();
+    Serial.printf("[estado] web=%u vueltas/5s peticiones=%u clientesWiFi=%d heap=%u can=%s tramas=%u\n",
+      (unsigned)loops, (unsigned)httpReqs, WiFi.softAPgetStationNum(), (unsigned)ESP.getFreeHeap(), twState, (unsigned)core->bus.frames);
+    loops = 0;
+  }
   if (!otaValidated && millis() > 30000) {   // lleva 30 s funcionando: este firmware es bueno
     esp_ota_mark_app_valid_cancel_rollback();
     otaValidated = true;
