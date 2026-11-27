@@ -41,7 +41,7 @@
   }
   function capStart(reset) {
     if (reset) { CAP.lines = []; CAP.next = 0; CAP.lost = 0; }
-    CAP.on = true; clearInterval(CAP.timer); CAP.timer = setInterval(capFetch, 500);
+    CAP.on = true; clearInterval(CAP.timer); CAP.timer = setInterval(capFetch, 400);
   }
   async function capStop() {
     clearInterval(CAP.timer); CAP.timer = null;

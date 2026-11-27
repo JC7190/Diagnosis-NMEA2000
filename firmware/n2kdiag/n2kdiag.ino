@@ -55,7 +55,7 @@ String otaErr;
 n2k::Core* core = nullptr;   // en el heap: es demasiado grande para la RAM estática
 SemaphoreHandle_t mtx;
 WebServer server(80);
-volatile uint32_t httpReqs = 0;   // peticiones atendidas (para el registro por USB)
+uint32_t httpReqs = 0;   // peticiones atendidas (para el registro por USB)
 
 // Todo lo que toca el driver TWAI se hace SOLO en la tarea CAN. La web pide los
 // cambios con un comando y espera a que la tarea lo aplique.
@@ -95,11 +95,15 @@ void canStart(bool active) {
   g.alerts_enabled = TWAI_ALERT_BUS_OFF | TWAI_ALERT_ERR_PASS | TWAI_ALERT_BUS_RECOVERED | TWAI_ALERT_ERR_ACTIVE;
   twai_timing_config_t t = TWAI_TIMING_CONFIG_250KBITS();
   twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
-  if (twai_driver_install(&g, &t, &f) == ESP_OK && twai_start() == ESP_OK) {
+  esp_err_t e1 = twai_driver_install(&g, &t, &f);
+  esp_err_t e2 = e1 == ESP_OK ? twai_start() : ESP_FAIL;
+  if (e1 == ESP_OK && e2 == ESP_OK) {
     canRunning = true; twState = "funcionando";
   } else {
-    twai_driver_uninstall();
+    if (e1 == ESP_OK) twai_driver_uninstall();
     twState = "error";
+    Serial.printf("[can] no arranca: instalar=%s iniciar=%s modo=%s heap=%u\n", esp_err_to_name(e1), esp_err_to_name(e2),
+                  active ? "normal" : "escucha", (unsigned)ESP.getFreeHeap());
   }
   memset(&twBase, 0, sizeof(twBase));
   if (canRunning) twai_get_status_info(&twBase);
@@ -225,7 +229,7 @@ void activeSchedule(uint32_t el, uint32_t now) {
 // Búfer circular con las últimas tramas de la prueba. El iPhone lo va descargando
 // (/api/frames) y al final guarda la captura completa en CSV.
 struct CapFrame { uint32_t us; uint32_t id; uint8_t len; uint8_t d[8]; };
-static const uint32_t CAP_N = 2048;   // ≈ 1 s de red llena; el iPhone pide cada 0,5 s
+static const uint32_t CAP_N = 1024;   // ≈ 20 KB; el iPhone pide cada 0,4 s
 CapFrame* cap = nullptr;
 uint32_t capSeq = 0;                  // tramas capturadas desde el inicio de la prueba
 int64_t capT0 = 0;
@@ -540,7 +544,7 @@ void setup() {
   analogSetPinAttenuation(VSENSE_PIN, ADC_11db);
   mtx = xSemaphoreCreateMutex();
   core = new n2k::Core();
-  cap = (CapFrame*)malloc(sizeof(CapFrame) * CAP_N);   // ≈ 40 KB; sin ella, la prueba funciona igual
+  cap = (CapFrame*)malloc(sizeof(CapFrame) * CAP_N);   // ≈ 20 KB; sin ella, la prueba funciona igual
 
   uint8_t mac[6]; WiFi.macAddress(mac);
   uint32_t uniq = ((uint32_t)mac[3] << 16 | (uint32_t)mac[4] << 8 | mac[5]) & 0x1FFFFF;
