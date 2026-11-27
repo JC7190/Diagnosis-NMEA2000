@@ -2,6 +2,7 @@
 // Funciona igual en el navegador y en Node (para pruebas).
 (function (root) {
   const LK = root.LK || (typeof require !== 'undefined' ? require('./lookups.js') : null);
+  const CFG = root.CFG || (typeof require !== 'undefined' ? require('./config.js') : null);
 
   // ---------- utilidades ----------
   const hexToBytes = (h) => { const b = []; h = h || ''; for (let i = 0; i + 1 < h.length; i += 2) b.push(parseInt(h.substr(i, 2), 16)); return b; };
@@ -163,59 +164,84 @@
         'Comprueba en este orden: 1) que la red tiene alimentación (cable de power con su fusible y el interruptor), 2) que hay dos terminadores, 3) que la herramienta está bien conectada a una T del backbone, 4) que no hay cables CAN-H/CAN-L (blanco/azul) cruzados en algún conector reparado.');
     }
 
-    // ---- 2. Alimentación ----
+    // ---- 2. Alimentación (PHY-01, PHY-03) ----
+    const TV = CFG.tension, RZ = CFG.rizado;
     if (v.ok) {
-      const dev = v.dev !== undefined ? v.dev : null;   // salto brusco máximo (firmware 1.2+)
-      const unstable = dev !== null ? dev > 1.0 : (v.max - v.min > 1.5);
-      if (v.min < 9.0) add('fail', 'Alimentación', `Tensión de la red demasiado baja (mín. ${fmt(v.min, 2)} V)`,
+      // rizado/transitorios pico a pico estimados: 2 × salto máximo (firmware 1.2+)
+      const pp = v.dev !== undefined ? v.dev * 2 : null;
+      if (v.max > TV.seguridad24V) add('fail', 'Seguridad', `¡Tensión peligrosa en la red: ${fmt(v.max, 1)} V!`,
+        'Más de 16 V en la red NMEA 2000: puede estar recibiendo 24 V o un cargador averiado. Los equipos pueden estropearse.',
+        'Desconecta la alimentación de la red YA. Comprueba que la red NMEA 2000 no esté conectada a 24 V y revisa cargador y regulador.');
+      else if (v.max > TV.falloAlto) add('fail', 'Alimentación', `Tensión demasiado alta (máx. ${fmt(v.max, 2)} V)`,
+        `Por encima de ${fmt(TV.falloAlto, 2)} V se sale del rango de la red.`, 'Revisa el regulador del alternador o el cargador de baterías.');
+      if (v.min < TV.falloBajo) add('fail', 'Alimentación', `Tensión de la red demasiado baja (mín. ${fmt(v.min, 2)} V)`,
         `Por debajo de 9 V los equipos NMEA 2000 dejan de funcionar o se reinician. Media ${fmt(v.avg, 2)} V.`,
         'Revisa la batería, el fusible y el cable de alimentación de la red. Busca conectores flojos u oxidados, sobre todo en la T de alimentación. Si la red es larga, aliméntala por el centro.');
-      else if (v.min < 10.5) add('warn', 'Alimentación', `Caídas de tensión en la red (mín. ${fmt(v.min, 2)} V)`,
+      else if (v.min < TV.avisoBajo) add('warn', 'Alimentación', `Tensión baja en la red (mín. ${fmt(v.min, 2)} V)`,
         `La tensión llegó a bajar a ${fmt(v.min, 2)} V (media ${fmt(v.avg, 2)} V). En el extremo más lejano del backbone puede ser aún menor.`,
         'Comprueba la carga de la batería y la conexión de la T de alimentación. Si coincide con el arranque del motor o del motor eléctrico, alimenta la red desde una batería o línea separada.');
-      else if (v.avg < 11.5) add('warn', 'Alimentación', `Tensión media baja (${fmt(v.avg, 2)} V)`,
-        'La red funciona, pero con poco margen.', 'Carga o revisa la batería que alimenta la red y la caída en el cable de alimentación.');
-      if (v.max > 15.5) add('warn', 'Alimentación', `Tensión alta (máx. ${fmt(v.max, 2)} V)`,
-        'Por encima de 15,5 V puede haber un problema de regulación de carga.', 'Revisa el regulador del alternador o el cargador de baterías.');
-      if (unstable && v.min >= 9.0) add('warn', 'Alimentación', `Tensión inestable (saltos de ${fmt(dev !== null ? dev : v.max - v.min, 1)} V)`,
+      if (pp !== null && pp > RZ.falloPP) add('fail', 'Alimentación', `Saltos de tensión muy grandes (≈ ${fmt(pp, 1)} V pico a pico)`,
+        `La tensión dio saltos bruscos durante la prueba (entre ${fmt(v.min, 1)} y ${fmt(v.max, 1)} V).`,
+        'Alimenta la red con su propia línea, separada del motor, propulsor u otras cargas grandes, y revisa conectores de alimentación con mal contacto.');
+      else if (pp !== null && pp > RZ.avisoPP) add('warn', 'Alimentación', `Tensión inestable (≈ ${fmt(pp, 1)} V pico a pico)`,
         `La tensión dio saltos bruscos durante la prueba (entre ${fmt(v.min, 1)} y ${fmt(v.max, 1)} V). Suele ser un conector o cable de alimentación con mal contacto.`,
         'Revisa el cable de alimentación de la red y su conector; mide la tensión moviendo el cable para localizar el mal contacto.');
-      if (v.min >= 10.5 && v.avg >= 11.5 && v.max <= 15.5 && !unstable)
+      const unstable = pp !== null && pp > RZ.avisoPP;
+      if (v.min >= TV.avisoBajo && v.max <= TV.falloAlto && !unstable)
         add('ok', 'Alimentación', `Tensión correcta (${fmt(v.min, 1)}–${fmt(v.max, 1)} V)`, '', '');
     } else {
-      add('info', 'Alimentación', 'Tensión de la red no medida', 'El sensor de tensión de la herramienta no da lectura.', 'Si quieres medirla, conecta el divisor de tensión al pin 34 (ver guía de montaje).');
+      add('na', 'Alimentación', 'Tensión de la red no medida', 'El sensor de tensión de la herramienta no da lectura.', '');
     }
 
-    // ---- 3. Terminadores (medida manual) ----
+    // ---- 3. Terminadores (PHY-08, medida manual: prevalece sobre las estimaciones) ----
     const T = {
-      '60': ['ok', 'Terminadores correctos (aprox. 60 ohm)', '', ''],
+      '60': ['ok', 'Terminadores correctos (aprox. 60 ohm)', 'Medida del técnico con la red apagada.', ''],
       '120': ['fail', 'Falta un terminador (aprox. 120 ohm)', 'Solo hay un terminador. Sin los dos, la señal rebota y aparecen errores y equipos que se caen.', 'Pon un terminador en cada extremo del backbone (dos en total, uno macho y otro hembra).'],
       '40': ['fail', 'Sobran terminadores (40 ohm o menos)', 'Hay tres o más terminadores. Pasa a menudo con equipos que llevan terminador interno o con terminadores olvidados en una T.', 'Deja solo dos terminadores, uno en cada extremo del backbone. Revisa si algún equipo tiene terminación interna activada.'],
       'open': ['fail', 'Sin terminadores o backbone cortado (resistencia muy alta)', 'Entre CAN-H y CAN-L no hay continuidad: no hay terminadores o el cable del backbone está cortado.', 'Pon dos terminadores; si ya están, busca el tramo cortado midiendo por secciones.'],
-      'short': ['fail', 'Cortocircuito entre CAN-H y CAN-L (casi 0 ohm)', 'Las líneas de datos están en cortocircuito: la red no puede funcionar.', 'Desconecta equipos y cables uno a uno hasta que desaparezca el corto; suele ser un conector con agua o un cable pisado.'],
+      'short': ['fail', 'Cortocircuito entre CAN-H y CAN-L (menos de 10 ohm)', 'Las líneas de datos están en cortocircuito: la red no puede funcionar.', 'Desconecta equipos y cables uno a uno hasta que desaparezca el corto; suele ser un conector con agua o un cable pisado.'],
+      'jump': ['fail', 'La medida de los terminadores no se estabiliza', 'Una lectura que salta suele indicar mal contacto o los cables blanco (CAN-H) y azul (CAN-L) cruzados en algún conector.', 'Revisa los conectores reparados o montados a mano: el blanco va al pin 4 y el azul al pin 5. Mide por tramos (desconectando la mitad del backbone) hasta encontrar el que falla.'],
     };
     if (T[manual.term]) { const t = T[manual.term]; add(t[0], 'Cableado', t[1], t[2], t[3]); }
-    else add('info', 'Cableado', 'Terminadores no medidos', 'No se hizo la medida de resistencia entre CAN-H y CAN-L.', 'Con la red apagada, mide entre el cable blanco y el azul de una T libre: debe dar unos 60 ohm.');
+    else add('na', 'Cableado', 'Terminadores no medidos', 'No se hizo la medida de resistencia entre CAN-H y CAN-L.', 'Con la red apagada, mide entre el pin 4 (blanco) y el 5 (azul) de una T libre: debe dar unos 60 ohm.');
 
-    // ---- 4. Errores CAN ----
+    // ---- 4. Errores CAN (LNK-01, LNK-02, LNK-03) ----
     const busErr = tw.busErr || 0;
     const errRate = bus.frames ? busErr / (bus.frames + busErr) * 100 : 0;
+    const errPerSec = dur > 0 ? busErr / (dur / 1000) : 0;
+    const EC = CFG.errores;
     if (al.busOff > 0) add('fail', 'Comunicación', 'La red llegó a bloquearse (bus-off)',
       `Hubo tantos errores que el controlador de la herramienta tuvo que desconectarse (${plural(al.busOff, 'vez', 'veces')}).`,
       'Fallo grave de cableado: revisa terminadores, cortos entre CAN-H/CAN-L, conectores con agua y cables dañados. Desconecta equipos uno a uno para localizar el que causa los errores.');
-    if (bus.frames && errRate > 3) add('fail', 'Comunicación', `Muchos errores de comunicación (${fmt(errRate, 1)} %)`,
-      `${busErr} errores en ${bus.frames} tramas. Con este nivel los datos llegan mal o se pierden.`,
+    // En «solo escuchar» con un único equipo nadie confirma sus mensajes: errores de ACK que no son avería
+    const benchAck = !active && others === 1 && busErr > 0;
+    if (benchAck) add('info', 'Comunicación', 'Errores por estar solo un equipo en la red',
+      `Con un solo equipo y la herramienta en «Solo escuchar», nadie confirma sus mensajes y aparecen ${busErr} errores. No es una avería.`,
+      'Para probar un equipo suelto en el banco, usa la prueba «Completa»: la herramienta sí confirma sus mensajes.');
+    else if (bus.frames && errPerSec > EC.falloPorSegundo) add('fail', 'Comunicación', `Muchos errores de comunicación (${fmt(errPerSec, 1)} por segundo)`,
+      `${busErr} errores en ${bus.frames} tramas (${fmt(errRate, 2)} %). Con este nivel los datos llegan mal o se pierden.`,
       'Revisa los dos terminadores, conectores con humedad o corrosión, derivaciones de más de 6 m y cables con la malla dañada. Desconecta equipos uno a uno para ver cuál los provoca.');
-    else if (bus.frames && (errRate > 0.3 || (al.errPass > 0 && others > 0))) add('warn', 'Comunicación', `Errores de comunicación (${fmt(errRate, 2)} %)`,
-      `${busErr} errores en ${bus.frames} tramas${al.errPass ? '; el controlador de la herramienta llegó a modo "error pasivo"' : ''}. La red funciona pero no está limpia.`,
-      'Revisa terminadores y conectores (humedad, pines doblados). Si los errores aparecen al arrancar un motor, revisa masas y la separación del cableado de potencia.');
-    else if (bus.frames) add('ok', 'Comunicación', 'Comunicación limpia, sin errores relevantes', busErr ? `${busErr} errores en ${bus.frames} tramas (${fmt(errRate, 2)} %).` : '', '');
+    else if (bus.frames && (busErr >= EC.avisoTotal || (al.errPass > 0 && others > 0))) add('warn', 'Comunicación', `Errores de comunicación (${busErr} en la prueba)`,
+      `${busErr} errores en ${bus.frames} tramas (${fmt(errPerSec, 2)} por segundo)${al.errPass ? '; el controlador de la herramienta llegó a modo "error pasivo"' : ''}. Cualquier error es indeseable aunque la red funcione.`,
+      'Revisa terminadores y conectores (humedad, pines doblados). Si los errores aparecen al arrancar un motor, revisa masas y la separación del cableado de potencia. Para fallos intermitentes, repite la prueba de 5 minutos.');
+    else if (bus.frames) add('ok', 'Comunicación', 'Comunicación limpia, sin errores', '', '');
     if (lost > 0) add('info', 'Herramienta', 'La herramienta no pudo leer algunas tramas',
       `${lost} tramas se perdieron dentro de la herramienta (no en la red). Algunos contadores pueden quedarse un poco cortos.`, '');
 
-    // ---- 5. Carga del bus ----
-    if (bus.loadPeak > 90) add('fail', 'Red', `Red saturada (pico ${fmt(bus.loadPeak, 0)} %)`, 'Con la red tan llena se retrasan y pierden mensajes.', 'Reduce la frecuencia de envío de algunos equipos o divide la red con un puente NMEA 2000.');
-    else if (bus.loadAvg > 40 || bus.loadPeak > 70) add('warn', 'Red', `Carga de red alta (media ${fmt(bus.loadAvg, 0)} %, pico ${fmt(bus.loadPeak, 0)} %)`, 'Hay poco margen para añadir equipos.', 'Revisa si hay equipos enviando datos repetidos o innecesarios.');
+    // ---- 5. Carga del bus (LNK-04, media de la prueba) ----
+    const CG = CFG.carga;
+    if (bus.loadAvg >= CG.fallo) add('fail', 'Red', `Red saturada (media ${fmt(bus.loadAvg, 0)} %)`, 'Con la red tan llena se retrasan y pierden mensajes.', 'Reduce la frecuencia de envío de algunos equipos o divide la red con un puente NMEA 2000.');
+    else if (bus.loadAvg >= CG.aviso || bus.loadPeak >= CG.fallo) add('warn', 'Red', `Carga de red alta (media ${fmt(bus.loadAvg, 0)} %, pico ${fmt(bus.loadPeak, 0)} %)`, 'Hay poco margen para añadir equipos.', 'Revisa si hay equipos enviando datos repetidos o innecesarios (rumbo o posición a 10 Hz o más).');
+
+    // ---- 5b. Tamaño de la red y mensajes fuera de NMEA 2000 (LNK-06) ----
+    const nPhys = devs.filter((d) => d.sa !== 254).length;
+    if (nPhys > CFG.nodos.max) add('warn', 'Red', `Demasiados equipos en la red (${nPhys})`, `El máximo recomendado son ${CFG.nodos.max} equipos físicos.`, 'Divide la red con un puente NMEA 2000.');
+    const inN2K = (p) => (p >= 59392 && p <= 60928) || p === 61184 || (p >= 61440 && p <= 65535) ||
+      (p >= 126208 && p <= 126464) || p === 126720 || (p >= 126976 && p <= 131071);
+    const outSa = [...new Set(pgns.filter((e) => !inN2K(e.pgn)).map((e) => e.sa))];
+    if (outSa.length) add('warn', 'Red', 'Mensajes fuera del estándar NMEA 2000',
+      `${outSa.map(devLabel).join(', ')} envía${outSa.length > 1 ? 'n' : ''} mensajes con números que NMEA 2000 no usa (de J1939 u otros sistemas).`,
+      'Suele ser un equipo de motor o una pasarela mal configurada conectada directamente a la red. Revisa que lleve la pasarela adecuada.', outSa);
 
     // ---- 6. Direcciones ----
     const raw = snap.devices || [];
@@ -241,6 +267,18 @@
         add('info', 'Direcciones', `Cambio de dirección resuelto (dir. ${d.sa})`,
           `La dirección ${d.sa} la usaron ${who}. ${movedAway ? 'El otro equipo pasó a otra dirección: es el reparto normal.' : 'Puede ser un equipo que se apagó y otro que ocupó su dirección.'}`, '');
       }
+    });
+
+    // ---- 6b. NAME duplicado (NET-03): dos equipos iguales funcionando a la vez ----
+    const seenName = {};
+    devs.forEach((d) => {
+      if (!d.name || d.name === '0000000000000000' || d.sa === 254) return;
+      const o = seenName[d.name];
+      if (o && Math.min(o.last, d.last) - Math.max(o.first, d.first) > 2000) {
+        add('warn', 'Direcciones', `Dos equipos con la misma identidad (dir. ${o.sa} y ${d.sa})`,
+          `${devLabel(o.sa)} y ${devLabel(d.sa)} tienen el mismo identificador (NAME). Suele pasar con dos equipos iguales sin instancia distinta: las pantallas los pueden confundir.`,
+          'Cambia la instancia de uno de los dos equipos desde su configuración o desde la pantalla (lista de dispositivos de la red).', [o.sa, d.sa]);
+      } else if (!o) seenName[d.name] = d;
     });
 
     // ---- 7. Estabilidad de cada equipo ----
@@ -273,7 +311,9 @@
         const pct = total ? d.fpErr / total * 100 : 100;
         const det = `${d.fpErr === 1 ? 'Un mensaje largo llegó cortado' : d.fpErr + ' mensajes largos llegaron cortados'}${d.fpOk ? ` de ${total} (${fmt(pct, 1)} %)` : ''}.`;
         if (lost > 0) add('info', 'Equipos', `Mensajes incompletos de ${label}`, det + ' La herramienta también perdió tramas, así que puede no ser culpa del equipo.', '', d.sa);
-        else if (d.fpErr >= 3 || pct > 2) add('warn', 'Equipos', `Mensajes incompletos de ${label}`, det,
+        else if (d.fpErr >= CFG.fastPacket.minMensajes && pct > CFG.fastPacket.falloPct) add('fail', 'Equipos', `Muchos mensajes incompletos de ${label}`, det,
+          'Se pierden tramas: revisa su cable de derivación y el conector, los terminadores y los errores de la red. Si la red va muy cargada, reduce el tráfico.', d.sa);
+        else if (d.fpErr >= CFG.fastPacket.minMensajes && pct > CFG.fastPacket.avisoPct) add('warn', 'Equipos', `Mensajes incompletos de ${label}`, det,
           'Posible ruido o mal contacto en su derivación. Revisa el cable y el conector; si hay errores CAN, revisa también los terminadores.', d.sa);
         else add('info', 'Equipos', `Mensaje incompleto aislado de ${label}`, det + ' Un caso aislado no indica avería.', '', d.sa);
       }
@@ -424,8 +464,8 @@
 
     // ---- 12. Consumo (LEN) ----
     const lenTotal = devs.reduce((s, d) => s + (d.pi && d.pi.len ? d.pi.len : 0), 0);
-    if (lenTotal > 50) add('warn', 'Alimentación', `Consumo de red alto (${lenTotal} LEN = ${fmt(lenTotal * 0.05, 2)} A)`,
-      'La suma de consumos declarados por los equipos es alta.', 'Comprueba la tensión en el extremo más lejano del backbone y alimenta la red por el centro si cae mucho.');
+    if (lenTotal > CFG.consumo.avisoLEN) add('warn', 'Alimentación', `Consumo de red alto (${lenTotal} LEN = ${fmt(lenTotal * 0.05, 2)} A)`,
+      'La suma de consumos declarados por los equipos supera los 3 A que admite una red con cable Micro.', 'Comprueba la tensión en el extremo más lejano del backbone y alimenta la red por el centro si cae mucho.');
 
     // ---- 13. Límites de la herramienta ----
     if (live.heap && live.heap < 25000) add('info', 'Herramienta', 'Memoria de la herramienta baja',
@@ -434,15 +474,16 @@
       'La tabla de mensajes de la herramienta se llenó; el análisis de algunos mensajes puede estar incompleto.', '');
 
     // ---- Estado por equipo ----
-    const rank = { ok: 0, info: 0, warn: 1, fail: 2 };
+    const rank = { ok: 0, na: 0, info: 0, warn: 1, fail: 2 };
     F.forEach((f) => {
       const list = Array.isArray(f.sa) ? f.sa : (f.sa === null ? [] : [f.sa]);
       list.forEach((sa) => { if (bySa[sa] && rank[f.sev] > rank[bySa[sa].sev]) bySa[sa].sev = f.sev; });
     });
 
-    const order = { fail: 0, warn: 1, info: 2, ok: 3 };
+    const order = { fail: 0, warn: 1, info: 2, na: 3, ok: 4 };
     F.forEach((f, i) => { f.i = i; });
-    F.sort((a, b) => order[a.sev] - order[b.sev] || a.i - b.i);
+    // seguridad primero; después de más a menos grave y, dentro, de lo físico a la aplicación
+    F.sort((a, b) => (b.area === 'Seguridad') - (a.area === 'Seguridad') || order[a.sev] - order[b.sev] || a.i - b.i);
     F.forEach((f) => { delete f.i; });
     const nFail = F.filter((f) => f.sev === 'fail').length, nWarn = F.filter((f) => f.sev === 'warn').length;
     const verdict = nFail ? 'fail' : nWarn ? 'warn' : 'ok';

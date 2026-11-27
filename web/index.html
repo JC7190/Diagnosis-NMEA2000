@@ -78,30 +78,32 @@
   <section id="term" class="screen">
     <h1>Medida de terminadores</h1>
     <div class="card how">
+      <p class="lead">La red lleva <b>dos terminadores</b>, uno en cada extremo del cable principal: uno <b>macho</b> y otro <b>hembra</b>. Juntos deben dar unos <b>60 Ω</b>.</p>
       <ol>
         <li>Apaga la alimentación de la red NMEA 2000.</li>
-        <li>Pon el polímetro en ohmios.</li>
-        <li>Mide entre el pin <b>blanco (CAN-H)</b> y el <b>azul (CAN-L)</b> de una T libre o del conector de un equipo.</li>
+        <li>Pon el polímetro en ohmios (Ω).</li>
+        <li>Mide entre el pin <b>4 blanco (CAN-H)</b> y el pin <b>5 azul (CAN-L, el del centro)</b> de una T libre o del conector de un equipo desconectado.</li>
       </ol>
-      <div class="pinrow">
-        <svg viewBox="0 0 80 80" class="conn"><circle cx="40" cy="40" r="34" class="face"/>
-          <circle cx="40" cy="18" r="6" class="p"/><circle cx="62" cy="40" r="6" class="p"/><circle cx="40" cy="62" r="6" class="p"/><circle cx="18" cy="40" r="6" class="p"/>
-          <circle cx="40" cy="40" r="7" class="p p5"/></svg>
-        <ul class="legend">
-          <li><i class="c wht"></i><b>Blanco</b> CAN-H</li>
-          <li><i class="c blu"></i><b>Azul</b> CAN-L <small>(pin central)</small></li>
-          <li><i class="c red"></i>Rojo +12 V · <i class="c blk"></i>Negro GND</li>
-        </ul>
+      <div class="faces">
+        <figure><svg viewBox="0 0 100 100" class="conn" role="img" aria-label="Conector macho"><circle cx="50" cy="52" r="44" class="ring"/><circle cx="50" cy="52" r="36" class="face"/><rect x="44" y="6" width="12" height="11" rx="2" class="key"/><circle cx="34" cy="34" r="8.5" fill="#e53935" stroke="#000" stroke-opacity=".5"/><text x="34" y="37.6" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">2</text><circle cx="66" cy="34" r="8.5" fill="#9a9ca3" stroke="#000" stroke-opacity=".5"/><text x="66" y="37.6" text-anchor="middle" font-size="10" font-weight="700" fill="#111">1</text><circle cx="50" cy="52" r="8.5" fill="#1e88e5" stroke="#000" stroke-opacity=".5"/><text x="50" y="55.6" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">5</text><circle cx="34" cy="70" r="8.5" fill="#151517" stroke="#8a8a92" stroke-width="1.5"/><text x="34" y="73.6" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">3</text><circle cx="66" cy="70" r="8.5" fill="#f4f4f5" stroke="#000" stroke-opacity=".5"/><text x="66" y="73.6" text-anchor="middle" font-size="10" font-weight="700" fill="#111">4</text></svg><figcaption>Macho <small>(pines)</small></figcaption></figure>
+        <figure><svg viewBox="0 0 100 100" class="conn" role="img" aria-label="Conector hembra"><circle cx="50" cy="52" r="44" class="ring"/><circle cx="50" cy="52" r="36" class="face"/><rect x="44" y="6" width="12" height="11" rx="2" class="key"/><circle cx="34" cy="34" r="8.5" fill="#9a9ca3" stroke="#000" stroke-opacity=".5"/><circle cx="34" cy="34" r="3.2" fill="#000" fill-opacity=".55"/><text x="22" y="37.6" text-anchor="middle" font-size="9" font-weight="700" class="num">1</text><circle cx="66" cy="34" r="8.5" fill="#e53935" stroke="#000" stroke-opacity=".5"/><circle cx="66" cy="34" r="3.2" fill="#000" fill-opacity=".55"/><text x="78" y="37.6" text-anchor="middle" font-size="9" font-weight="700" class="num">2</text><circle cx="50" cy="52" r="8.5" fill="#1e88e5" stroke="#000" stroke-opacity=".5"/><circle cx="50" cy="52" r="3.2" fill="#000" fill-opacity=".55"/><text x="62" y="55.6" text-anchor="middle" font-size="9" font-weight="700" class="num">5</text><circle cx="34" cy="70" r="8.5" fill="#f4f4f5" stroke="#000" stroke-opacity=".5"/><circle cx="34" cy="70" r="3.2" fill="#000" fill-opacity=".55"/><text x="22" y="73.6" text-anchor="middle" font-size="9" font-weight="700" class="num">4</text><circle cx="66" cy="70" r="8.5" fill="#151517" stroke="#8a8a92" stroke-width="1.5"/><circle cx="66" cy="70" r="3.2" fill="#000" fill-opacity=".55"/><text x="78" y="73.6" text-anchor="middle" font-size="9" font-weight="700" class="num">3</text></svg><figcaption>Hembra <small>(agujeros)</small></figcaption></figure>
       </div>
+      <ul class="legend">
+        <li><i class="c wht"></i><b>4 Blanco</b> CAN-H <span class="mark">medir aquí</span></li>
+        <li><i class="c blu"></i><b>5 Azul</b> CAN-L <span class="mark">medir aquí</span></li>
+        <li><i class="c red"></i>2 Rojo +12 V · <i class="c blk"></i>3 Negro GND · <i class="c gry"></i>1 Malla</li>
+      </ul>
+      <p class="tip">¿Quieres comprobar un terminador suelto? Mide entre sus pines 4 y 5: cada uno debe dar unos <b>120 Ω</b>.</p>
     </div>
     <p class="q">¿Qué valor marca el polímetro?</p>
     <div class="answers" id="ansTerm">
       <button data-v="60"><b>Unos 60 Ω</b><small>Lo correcto</small></button>
-      <button data-v="120"><b>Unos 120 Ω</b></button>
-      <button data-v="40"><b>40 Ω o menos</b></button>
-      <button data-v="open"><b>Muy alto o infinito</b></button>
-      <button data-v="short"><b>Casi 0 Ω</b></button>
-      <button data-v="skip"><b>No lo he medido</b></button>
+      <button data-v="120"><b>Unos 120 Ω</b><small>Falta un terminador</small></button>
+      <button data-v="40"><b>40 Ω o menos</b><small>Sobra alguno</small></button>
+      <button data-v="short"><b>Casi 0 Ω</b><small>Menos de 10 Ω</small></button>
+      <button data-v="open"><b>Muy alto o infinito</b><small>Sin terminadores o cable cortado</small></button>
+      <button data-v="jump"><b>El valor salta</b><small>No se queda quieto</small></button>
+      <button data-v="skip" class="wide"><b>No lo he medido</b></button>
     </div>
   </section>
 
@@ -135,6 +137,7 @@
 </main>
 <div id="toast" class="toast"></div>
 <script src="lookups.js"></script>
+<script src="config.js"></script>
 <script src="analyze.js"></script>
 <script src="report.js"></script>
 <script src="app.js"></script>

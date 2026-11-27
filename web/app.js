@@ -71,7 +71,8 @@
       if (!hasV) return setStatus('bad', 'No llega nada de la red', 'Comprueba que la herramienta está conectada a una T del backbone y que la red NMEA 2000 tiene alimentación (interruptor y fusible).');
       return setStatus('warn', 'Hay tensión, pero no llegan datos', 'Enciende algún equipo de la red (pantalla, GPS…). Si ya están encendidos, haz el diagnóstico para buscar la causa.');
     }
-    if (hasV && v.now < 10.5) return setStatus('warn', `Red detectada con tensión baja (${fmt(v.now, 1)} V)`, 'Puedes hacer el diagnóstico; el informe te dirá qué revisar.');
+    if (hasV && v.now > CFG.tension.seguridad24V) return setStatus('bad', `¡Tensión peligrosa: ${fmt(v.now, 1)} V!`, 'Más de 16 V en la red: puede estar a 24 V. Desconecta la alimentación de la red.');
+    if (hasV && v.now < CFG.tension.avisoBajo) return setStatus('warn', `Red detectada con tensión baja (${fmt(v.now, 1)} V)`, 'Puedes hacer el diagnóstico; el informe te dirá qué revisar.');
     if (er > 3) return setStatus('warn', 'Red detectada con muchos errores', 'Haz el diagnóstico para ver la causa.');
     return setStatus('ok', `Red detectada: ${nDev} equipo${nDev === 1 ? '' : 's'}`, 'Todo listo. Pulsa «Iniciar diagnóstico completo».');
   }
@@ -83,16 +84,18 @@
     const devs = (s.devices || []).filter((x) => !(x.sa === b.ownAddr && L.mode === 'active'));
     // inicio
     const tile = (id, val, cls) => { const el = $(id); el.textContent = val; el.parentElement.classList.remove('bad', 'mid', 'good'); if (cls) el.parentElement.classList.add(cls); };
-    tile('#tV', v.now > 4 ? fmt(v.now, 1) + ' V' : '—', v.now > 4 ? (v.now < 10.5 ? 'bad' : v.now < 11.5 ? 'mid' : 'good') : null);
+    const TV = CFG.tension;
+    tile('#tV', v.now > 4 ? fmt(v.now, 1) + ' V' : '—', v.now > 4 ? (v.now < TV.falloBajo || v.now > TV.falloAlto ? 'bad' : v.now < TV.avisoBajo ? 'mid' : 'good') : null);
     $('#tVs').textContent = v.ok ? `mín ${fmt(v.min, 1)} · máx ${fmt(v.max, 1)}` : 'sin lectura';
-    tile('#tLoad', fmt(b.loadNow, 0) + ' %', b.loadNow > 70 ? 'bad' : b.loadNow > 40 ? 'mid' : null);
+    tile('#tLoad', fmt(b.loadNow, 0) + ' %', b.loadNow >= CFG.carga.fallo ? 'bad' : b.loadNow >= CFG.carga.aviso ? 'mid' : null);
     $('#tLoads').textContent = `pico ${fmt(b.loadPeak, 0)} %`;
     const nDev = devs.filter((x) => x.sa !== 254).length;
     tile('#tDev', String(nDev));
     const busErr = tw.busErr || 0;
     const er = b.frames ? busErr / (b.frames + busErr) * 100 : 0;
     homeStatus(s, nDev, er);
-    tile('#tErr', String(busErr), er > 3 ? 'bad' : er > 0.3 ? 'mid' : b.frames ? 'good' : null);
+    const eps = s.dur > 0 ? busErr / (s.dur / 1000) : 0;
+    tile('#tErr', String(busErr), eps > CFG.errores.falloPorSegundo ? 'bad' : busErr > 0 ? 'mid' : b.frames ? 'good' : null);
     $('#tErrs').textContent = b.frames ? `${fmt(er, 2)} % · ${tw.state || '-'}` : `CAN ${tw.state || '-'}`;
     const list = $('#liveDevs');
     let html;
@@ -184,14 +187,14 @@
   };
 
   // ---------- resultado ----------
-  const SEV = { fail: 'AVERÍA', warn: 'REVISAR', ok: 'OK', info: 'INFO' };
+  const SEV = { fail: 'AVERÍA', warn: 'REVISAR', ok: 'OK', info: 'INFO', na: 'NO MEDIDO' };
   function renderResult(r) {
     const V = { fail: ['Avería detectada', 'Hay fallos que impiden que la red funcione bien.'],
       warn: ['Revisar', 'La red funciona, pero hay puntos que corregir.'], ok: ['Red correcta', 'No se ha encontrado ningún problema.'] }[r.verdict];
     $('#verdict').className = 'verdict ' + r.verdict;
     $('#verdict').innerHTML = `<h1>${V[0]}</h1><p>${V[1]}</p><span class="cnt">${r.nFail} avería${r.nFail === 1 ? '' : 's'} · ${r.nWarn} aviso${r.nWarn === 1 ? '' : 's'}</span>`;
     const m = r.metrics, v = m.v || {};
-    const TT = { '60': 'Correctos', '120': 'Falta uno', '40': 'Sobran', open: 'Abierto', short: 'Corto', skip: 'No medido' };
+    const TT = { '60': 'Correctos', '120': 'Falta uno', '40': 'Sobran', open: 'Abierto', short: 'Corto', jump: 'Inestable', skip: 'No medido' };
     $('#resTiles').innerHTML = [
       ['Equipos', m.nDev, ''], ['Tensión', v.ok ? `${fmt(v.min, 1)}–${fmt(v.max, 1)} V` : '—', v.ok ? `media ${fmt(v.avg, 1)} V` : 'no medida'],
       ['Errores CAN', fmt(m.errRate, 2) + ' %', `${m.busErr} errores`], ['Terminadores', TT[m.term], ''],

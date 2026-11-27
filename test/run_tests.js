@@ -88,5 +88,37 @@ console.log('\n[grande]');
   console.log(`   JSON completo ${(big / 1024).toFixed(0)} KB, ligero ${(small / 1024).toFixed(0)} KB`);
 }
 
-console.log(fails ? `\n✗ ${fails} comprobaciones fallidas` : '\n✓ Todas las pruebas pasan');
+// ---------- 4. Reglas de la especificación (umbrales de config.js) ----------
+console.log('\n[reglas]');
+{
+  const base = run('limpia');
+  const clone = () => JSON.parse(JSON.stringify(base));
+  let s = clone(); s.live.v = { ok: 1, min: 24.1, max: 26.2, avg: 25, dev: 0.1 };
+  let r = A.analyze(s, { term: '60' });
+  ok(r.findings[0].area === 'Seguridad' && r.findings[0].sev === 'fail', 'más de 16 V: aviso de seguridad el primero');
+  s = clone(); s.live.v = { ok: 1, min: 9.6, max: 12.5, avg: 12, dev: 0.1 };
+  ok(has(A.analyze(s, { term: '60' }), 'warn', /Tensión baja/), 'tensión 9–10 V = aviso');
+  s = clone(); s.live.v = { ok: 1, min: 12, max: 12.6, avg: 12.3, dev: 2.8 };
+  ok(has(A.analyze(s, { term: '60' }), 'fail', /Saltos de tensión/), 'rizado > 5 V p-p = avería');
+  ok(has(A.analyze(base, { term: 'jump' }), 'fail', /no se estabiliza/), 'lectura de terminadores que salta = avería');
+  ok(A.analyze(base, { term: 'skip' }).findings.some((f) => f.sev === 'na' && /Terminadores no medidos/.test(f.title)), 'terminadores sin medir = NO MEDIDO');
+  s = clone(); s.live.twai.busErr = 1;
+  ok(has(A.analyze(s, { term: '60' }), 'warn', /Errores de comunicación/), 'un solo error de bus = aviso');
+  s = clone(); s.live.twai.busErr = Math.round(16 * s.dur / 1000);
+  ok(has(A.analyze(s, { term: '60' }), 'fail', /Muchos errores/), 'más de 15 errores/s = avería');
+  s = clone(); s.bus.loadAvg = 85; ok(has(A.analyze(s, { term: '60' }), 'warn', /Carga de red alta/), 'carga 80–89 % = aviso');
+  s = clone(); s.bus.loadAvg = 92; ok(has(A.analyze(s, { term: '60' }), 'fail', /Red saturada/), 'carga ≥ 90 % = avería');
+  s = clone(); s.pgns.push({ sa: 5, pgn: 61444, inst: 255, n: 50, first: 0, last: 50000, minI: 1000, maxI: 1000, avgI: 1000, or: 0, orRun: 0, na: 0, d: '' });
+  ok(!has(A.analyze(s, { term: '60' }), null, /fuera del estándar/), 'PGN dentro de rango NMEA 2000 no se marca');
+  s.pgns.push({ sa: 5, pgn: 4096, inst: 255, n: 50, first: 0, last: 50000, minI: 1000, maxI: 1000, avgI: 1000, or: 0, orRun: 0, na: 0, d: '' });
+  ok(has(A.analyze(s, { term: '60' }), 'warn', /fuera del estándar/), 'PGN fuera de rango NMEA 2000 = aviso');
+  s = clone(); const d0 = s.devices.find((d) => d.sa === 20), d1 = s.devices.find((d) => d.sa === 21);
+  d1.name = d0.name;
+  ok(has(A.analyze(s, { term: '60' }), 'warn', /misma identidad/), 'dos equipos con el mismo NAME a la vez = aviso');
+  s = clone(); s.live.mode = 'passive'; s.devices = s.devices.filter((d) => d.sa === 20); s.live.twai.busErr = 500;
+  const rb = A.analyze(s, { term: '60' });
+  ok(has(rb, 'info', /solo un equipo/) && !has(rb, 'fail', /errores/i), 'banco: un equipo en «solo escuchar» ≠ avería de errores');
+}
+
+console.log(fails ?`\n✗ ${fails} comprobaciones fallidas` : '\n✓ Todas las pruebas pasan');
 process.exit(fails ? 1 : 0);

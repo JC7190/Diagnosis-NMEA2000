@@ -23,7 +23,7 @@ logo = rd('brand/logo_inline.svg').strip()   # logo PoweryMax (blanco, color = c
 html = rd('index.html').replace('<!--LOGO-->', logo)
 html = html.replace('<link rel="stylesheet" href="style.css">', '<style>' + slim(rd('style.css')) + '</style>')
 def inline(m): return '<script>' + slim(rd(m.group(1))).replace('</script', '<\\/script') + '</script>'
-html = re.sub(r'<script src="((?:lookups|analyze|report|app)\.js)"></script>', inline, html)
+html = re.sub(r'<script src="((?:lookups|config|analyze|report|app)\.js)"></script>', inline, html)
 open(os.path.join(dist, 'index.html'), 'w', encoding='utf-8').write(html)
 open(os.path.join(dist, 'update.html'), 'w', encoding='utf-8').write(rd('update.html').replace('<!--LOGO-->', logo))
 

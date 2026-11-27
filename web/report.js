@@ -2,15 +2,15 @@
 (function (root) {
   const C = {
     navy: [20, 20, 22], teal: [225, 37, 45], gray: [160, 160, 168], text: [33, 37, 41], muted: [108, 117, 125], line: [222, 226, 230], bg: [246, 248, 250],
-    fail: [198, 40, 40], warn: [214, 128, 0], ok: [46, 125, 50], info: [69, 90, 100],
+    fail: [198, 40, 40], warn: [214, 128, 0], ok: [46, 125, 50], info: [69, 90, 100], na: [130, 130, 138],
   };
-  const SEV = { fail: 'AVERÍA', warn: 'REVISAR', ok: 'OK', info: 'INFO' };
+  const SEV = { fail: 'AVERÍA', warn: 'REVISAR', ok: 'OK', info: 'INFO', na: 'NO MEDIDO' };
   const VERDICT = {
     fail: ['AVERÍA DETECTADA', 'Hay fallos que impiden que la red funcione bien. Sigue los pasos de "Qué hay que hacer".'],
     warn: ['REVISAR', 'La red funciona, pero hay puntos que conviene corregir.'],
     ok: ['RED CORRECTA', 'No se ha encontrado ningún problema en la red.'],
   };
-  const TERM = { '60': ['Correctos', '60 ohm'], '120': ['Falta uno', '120 ohm'], '40': ['Sobran', '40 ohm o menos'], open: ['Abierto', 'resistencia muy alta'], short: ['Cortocircuito', 'casi 0 ohm'], skip: ['No medido', ''] };
+  const TERM = { '60': ['Correctos', '60 ohm'], '120': ['Falta uno', '120 ohm'], '40': ['Sobran', '40 ohm o menos'], open: ['Abierto', 'resistencia muy alta'], short: ['Cortocircuito', 'menos de 10 ohm'], jump: ['Inestable', 'la lectura salta'], skip: ['No medido', ''] };
 
   // La fuente estándar del PDF solo tiene los caracteres de Windows-1252: lo demás
   // (flechas, símbolos, textos raros que mandan algunos equipos) se sustituye.

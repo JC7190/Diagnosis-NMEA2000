@@ -10,9 +10,14 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.4** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Grabado y arrancando en el ESP32 de Javi (v1.3, por USB desde su Mac). **No se ha probado aún en hardware real.**
+- Firmware **v1.5** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). En el ESP32 de Javi está grabada la v1.4 (por USB desde su Mac). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
+
+### Cambios de la v1.5
+- Pantalla de terminadores: caras reales del conector Micro-C **macho y hembra** (figura 3 de NMEA 2000) con colores por pin (1 malla gris, 2 rojo +12 V, 3 negro GND, 4 blanco CAN-H, 5 azul CAN-L), explicación de los dos terminadores y respuesta nueva «El valor salta» (H/L cruzados o mal contacto).
+- **Umbrales centralizados en `web/config.js`**, cada uno con fuente y etiqueta verificado/estimado/supuesto, según la especificación técnica de Javi (§2.5, §9.2): tensión OK 10–15,75 / aviso 9–10 / fallo <9 o >15,75, **>16 V = aviso de seguridad el primero**; rizado p-p (≈2× salto) aviso >2 V, fallo >5 V; errores de bus: cualquier error = aviso, >15/s = fallo; carga media aviso ≥80 %, fallo ≥90 %; fast packet incompletos aviso >1 %, fallo >5 %; consumo aviso >60 LEN (3 A); >50 equipos = aviso.
+- Comprobaciones nuevas: estado «NO MEDIDO» (gris), PGN fuera de los rangos NMEA 2000 (LNK-06), NAME duplicado a la vez (NET-03), aviso de banco (un solo equipo en «solo escuchar» → errores de ACK que no son avería).
 
 ### Cambios de la v1.4 (marca PoweryMax)
 - Producto: **PoweryMax Nmea2000 Diagnostic**. Colores de marca: negro, gris y rojo (`--ac:#e1252d`); los colores de estado (verde/ámbar/rojo) no cambian.
@@ -108,7 +113,7 @@ test/
 - **Modo activo** (por defecto): el ESP32 reclama dirección (60928) y a los 0,4 s pide 60928 a todos, a 0,9 s 126996, a 1,4 s 126998; a los 6 s y 12 s pide 126996 dirigido a quien no respondió; a 20 s repite 60928. **Modo pasivo**: solo escucha (no transmite nunca).
 - Al acabar, `twEnd` congela los contadores TWAI (errores, bus-off…) para que el informe sea coherente.
 - La app pregunta al usuario (tipo test) cuánto mide el terminador con el multímetro (≈60 Ω correcto, ≈120 Ω falta uno, ≈40 Ω sobra uno…), porque el ESP32 no puede medirlo.
-- `analyze.js` genera hallazgos: alimentación (umbrales 9 / 10,5 / 11,5 / 15,5 V, rizado > 1,5 V), terminación, tasa de errores CAN (> 0,3 % aviso, > 3 % fallo, bus-off), carga del bus, dirección 254, conflictos de dirección, caídas/reinicios (heartbeat), errores fast-packet, falta de product info, instancias duplicadas, múltiples fuentes de un dato, frecuencias de PGN anómalas, bits de alarma de motor (127489), batería (127508), datos "no disponible" de profundidad/GPS/rumbo, LEN.
+- `analyze.js` genera hallazgos (umbrales en `web/config.js`): alimentación, terminación, errores CAN (cualquier error aviso, > 15/s fallo, bus-off), carga del bus, dirección 254, conflictos de dirección, caídas/reinicios (heartbeat), errores fast-packet, falta de product info, instancias duplicadas, múltiples fuentes de un dato, frecuencias de PGN anómalas, bits de alarma de motor (127489), batería (127508), datos "no disponible" de profundidad/GPS/rumbo, LEN.
 
 ### OTA
 - Partición `min_spiffs` (app 1.966.080 bytes, dos slots OTA).
