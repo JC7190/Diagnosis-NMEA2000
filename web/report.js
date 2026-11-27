@@ -16,7 +16,7 @@
   // (flechas, símbolos, textos raros que mandan algunos equipos) se sustituye.
   const CP1252 = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
   const clean = (s) => String(s == null ? '' : s)
-    .replace(/→/g, '->').replace(/Ω/g, ' ohm').replace(/[✓✔]/g, '')
+    .replace(/→/g, '->').replace(/≈ ?/g, 'aprox. ').replace(/[≥]/g, '>=').replace(/[≤]/g, '<=').replace(/Ω/g, ' ohm').replace(/[✓✔]/g, '')
     .replace(/[^\u0000-ÿ]/g, (c) => (CP1252.includes(c) ? c : '?'))
     .replace(/[\u0000-\u001F\u007F]/g, ' ');
 
@@ -128,13 +128,27 @@
       }
     };
 
-    // ---- Detalle ----
-    y += 2; section('Detalle de las comprobaciones', 40);
+    // ---- Resultado por áreas: de lo físico a los datos (seguridad siempre primero) ----
+    const AREAS = ['Seguridad', 'Alimentación', 'Cableado', 'Comunicación', 'Red', 'Direcciones', 'Equipos', 'Configuración',
+      'Motor', 'Baterías', 'Sondas', 'GPS', 'Rumbo', 'Datos', 'Herramienta'];
+    const rankA = (x) => { const i = AREAS.indexOf(x); return i < 0 ? 99 : i; };
+    const SORD = { fail: 0, warn: 1, info: 2, na: 3, ok: 4 };
+    const byArea = r.findings.slice().sort((p, q) => rankA(p.area) - rankA(q.area) || SORD[p.sev] - SORD[q.sev]);
+    const body = []; let last = null;
+    byArea.forEach((f) => {
+      if (f.area !== last) {
+        last = f.area;
+        body.push([{ content: clean(f.area).toUpperCase(), colSpan: 3, styles: { fillColor: [236, 236, 239], textColor: [60, 60, 66], fontStyle: 'bold', fontSize: 7.5, cellPadding: { top: 1.6, bottom: 1.6, left: 2, right: 2 } } }]);
+      }
+      body.push([{ content: '', sev: f.sev }, clean(f.title), clean(f.detail)]);
+    });
+    y += 2; section('Resultado por áreas', 40);
     doc.autoTable(Object.assign({}, tableBase, {
       startY: y,
-      head: [['Estado', 'Área', 'Resultado', 'Detalle']],
-      body: r.findings.map((f) => [{ content: '', sev: f.sev }, clean(f.area), clean(f.title), clean(f.detail)]),
-      columnStyles: { 0: { cellWidth: 19 }, 1: { cellWidth: 26 }, 2: { cellWidth: 55, fontStyle: 'bold' } },
+      head: [['Estado', 'Resultado', 'Detalle']],
+      body,
+      alternateRowStyles: {},
+      columnStyles: { 0: { cellWidth: 21 }, 1: { cellWidth: 66, fontStyle: 'bold' } },
       didParseCell: (d) => sevCell(d, 0),
     }));
     y = doc.lastAutoTable.finalY + 10;
@@ -160,6 +174,27 @@
       y += 12;
     }
 
+    // ---- Limitaciones de la prueba ----
+    const lims = [];
+    lims.push(m.term && m.term !== 'skip' ? 'Terminadores: medida hecha por el técnico con el polímetro y la red apagada.'
+      : 'Terminadores: no se midieron (la herramienta no puede medirlos con la red encendida).');
+    lims.push('Niveles eléctricos del bus CAN (diferencial, modo común) y tensión de la malla: no medidos; la herramienta no tiene ese hardware.');
+    lims.push('Rizado de la tensión: estimado a partir de lecturas cada 50 ms; los picos muy rápidos no se ven.');
+    lims.push('Carga de la red: estimada contando tramas; las tramas con error no se cuentan.');
+    if (m.mode !== 'active') lims.push('Prueba en «Solo escuchar»: no se pidió a los equipos su modelo, software ni número de serie.');
+    lims.push('Datos de motor, batería, GPS y sonda: interpretación propia de los mensajes, no la norma oficial NMEA 2000.');
+    if (r.findings.some((f) => f.area === 'Herramienta')) lims.push('Ver también los avisos del apartado «Herramienta» en el resultado por áreas.');
+    if (y + 10 + lims.length * 5 > BOTTOM) { doc.addPage(); y = 18; }
+    section('Limitaciones de la prueba', 30);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.muted);
+    lims.forEach((t) => {
+      const ls = doc.splitTextToSize(clean(t), CW - 5);
+      if (y + ls.length * 4 > BOTTOM) { doc.addPage(); y = 18; }
+      doc.setFillColor(...C.gray); doc.circle(M + 1, y - 1, 0.7, 'F');
+      doc.text(ls, M + 4, y); y += ls.length * 4 + 1.2;
+    });
+    y += 6;
+
     // ---- Anexo: mensajes ----
     if (r.pgnRows.length) {
       y += 2; section('Anexo: mensajes de cada equipo', 50);
@@ -169,6 +204,23 @@
         body: r.pgnRows.map((p) => [String(p.sa), clean(p.dev), String(p.pgn), clean(p.name), String(p.n), p.every, p.expected]),
         styles: Object.assign({}, tableBase.styles, { fontSize: 7.5, cellPadding: 1.5 }),
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 15 }, 4: { cellWidth: 17, halign: 'right' }, 5: { cellWidth: 14, halign: 'right' }, 6: { cellWidth: 14, halign: 'right' } },
+      }));
+    }
+
+    // ---- Fuentes de los umbrales ----
+    const CF = root.CFG || (typeof require !== 'undefined' ? (() => { try { return require('./config.js'); } catch (e) { return null; } })() : null);
+    if (CF) {
+      y = (r.pgnRows.length ? doc.lastAutoTable.finalY : y) + 10;
+      if (y + 30 > BOTTOM) { doc.addPage(); y = 18; }
+      section('Fuentes de los umbrales', 30);
+      const NAMES = { tension: 'Tensión de red', rizado: 'Rizado', errores: 'Errores de bus', carga: 'Carga de red', fastPacket: 'Mensajes incompletos',
+        consumo: 'Consumo (LEN)', nodos: 'Número de equipos', terminacion: 'Terminadores' };
+      doc.autoTable(Object.assign({}, tableBase, {
+        startY: y,
+        head: [['Comprobación', 'Fuente', 'Grado']],
+        body: Object.keys(NAMES).filter((k) => CF[k]).map((k) => [NAMES[k], clean(CF[k].fuente), clean(CF[k].etiqueta)]),
+        styles: Object.assign({}, tableBase.styles, { fontSize: 7.5, cellPadding: 1.5 }),
+        columnStyles: { 0: { cellWidth: 38, fontStyle: 'bold' }, 2: { cellWidth: 20 } },
       }));
     }
 

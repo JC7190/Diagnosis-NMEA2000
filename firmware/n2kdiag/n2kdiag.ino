@@ -9,12 +9,13 @@
 #include <ESPmDNS.h>
 #include <Update.h>
 #include "esp_ota_ops.h"
+#include "esp_timer.h"
 #include "driver/twai.h"
 #include "n2k_core.h"
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.5"
+#define FW_VERSION   "1.6"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
@@ -37,6 +38,7 @@ bool runCommand(int cmd, uint32_t durMs, bool active);
 void handleSnapshot();
 void handleStart();
 void handleResume();
+void handleFrames();
 void sendAsset(const uint8_t* data, size_t len, const char* type, bool cache);
 void handleUpdateUpload();
 void handleUpdateDone();
@@ -218,7 +220,17 @@ void activeSchedule(uint32_t el, uint32_t now) {
   }
 }
 
+// ---------------- Captura de tramas ----------------
+// Búfer circular con las últimas tramas de la prueba. El iPhone lo va descargando
+// (/api/frames) y al final guarda la captura completa en CSV.
+struct CapFrame { uint32_t us; uint32_t id; uint8_t len; uint8_t d[8]; };
+static const uint32_t CAP_N = 2048;   // ≈ 1 s de red llena; el iPhone pide cada 0,5 s
+CapFrame* cap = nullptr;
+uint32_t capSeq = 0;                  // tramas capturadas desde el inicio de la prueba
+int64_t capT0 = 0;
+
 static void resetCounters(uint32_t now) {
+  capSeq = 0; capT0 = esp_timer_get_time();
   core->reset(now);
   vMin = 99; vMax = 0; vSum = 0; vN = 0; vDev = 0;
   alBusOff = alErrPass = alRecovered = 0;
@@ -261,6 +273,7 @@ void canTask(void*) {
   uint32_t lastV = 0, lastSt = 0;
   canStart(false);   // la ISR queda en este núcleo
   static n2k::Frame batch[32];
+  static uint32_t batchUs[32];
   for (;;) {
     // 1) Recibe un lote de tramas (espera como mucho 2 ms a la primera)
     int n = 0;
@@ -270,7 +283,8 @@ void canTask(void*) {
       while (n < 32 && twai_receive(&m, wait) == ESP_OK) {
         wait = 0;
         if (!m.extd || m.rtr) continue;
-        n2k::Frame& f = batch[n++];
+        n2k::Frame& f = batch[n];
+        batchUs[n++] = (uint32_t)(esp_timer_get_time() - capT0);
         f.id = m.identifier; f.len = m.data_length_code > 8 ? 8 : m.data_length_code;
         memcpy(f.data, m.data, f.len);
       }
@@ -294,7 +308,14 @@ void canTask(void*) {
 
     // 3) Análisis y peticiones (con el mutex tomado poco tiempo)
     xSemaphoreTake(mtx, portMAX_DELAY);
-    if (!frozen) for (int i = 0; i < n; i++) core->onFrame(batch[i], now);
+    if (!frozen) for (int i = 0; i < n; i++) {
+      core->onFrame(batch[i], now);
+      if (cap && diagRunning) {
+        CapFrame& c = cap[capSeq % CAP_N];
+        c.us = batchUs[i]; c.id = batch[i].id; c.len = batch[i].len; memcpy(c.d, batch[i].data, 8);
+        capSeq++;
+      }
+    }
     if (gotSt && !frozen) twNow = st;
     if (!frozen) core->tick(now);
     if (activeMode && !frozen && diagRunning) {
@@ -411,6 +432,45 @@ void handleStart() {
   else server.send(503, "application/json", "{\"ok\":0}");
 }
 
+// Tramas capturadas a partir de ?from=N (texto: una línea por trama, formato del CSV).
+// Primera línea: "#seq=<total>;lost=<perdidas>" (perdidas = se sobrescribieron antes de pedirlas).
+void handleFrames() {
+  uint32_t from = server.hasArg("from") ? (uint32_t)server.arg("from").toInt() : 0;
+  xSemaphoreTake(mtx, portMAX_DELAY);
+  uint32_t total = capSeq;
+  xSemaphoreGive(mtx);
+  uint32_t first = from, lost = 0;
+  if (total > CAP_N && first < total - CAP_N) { lost = total - CAP_N - first; first = total - CAP_N; }
+  if (first > total) first = total;
+  if (total - first > 1200) total = first + 1200;   // como mucho 1200 por petición
+  server.sendHeader("Cache-Control", "no-store");
+  server.chunkResponseBegin("text/plain");
+  char line[64];
+  int n = snprintf(line, sizeof(line), "#seq=%u;lost=%u\n", (unsigned)total, (unsigned)lost);
+  server.chunkWrite(line, n);
+  static CapFrame tmp[48];
+  static char out[48 * 44];
+  for (uint32_t i = first; cap && i < total; ) {
+    uint32_t k = 0;
+    xSemaphoreTake(mtx, portMAX_DELAY);
+    // si mientras tanto se ha sobrescrito, se para aquí (el iPhone lo pedirá como perdido)
+    if (capSeq - i > CAP_N) { xSemaphoreGive(mtx); break; }
+    for (; k < 48 && i + k < total; k++) tmp[k] = cap[(i + k) % CAP_N];
+    xSemaphoreGive(mtx);
+    int len = 0;
+    static const char H[] = "0123456789ABCDEF";
+    for (uint32_t j = 0; j < k; j++) {
+      CapFrame& c = tmp[j];
+      len += snprintf(out + len, 24, "%u;%08X;%u;", (unsigned)c.us, (unsigned)(c.id & 0x1FFFFFFF), c.len);
+      for (int b = 0; b < c.len; b++) { out[len++] = H[c.d[b] >> 4]; out[len++] = H[c.d[b] & 15]; }
+      out[len++] = ';'; out[len++] = '\n';
+    }
+    server.chunkWrite(out, len);
+    i += k;
+  }
+  server.chunkResponseEnd();
+}
+
 void handleResume() {
   runCommand(CMD_RESUME, 0, false);
   server.send(200, "application/json", "{\"ok\":1}");
@@ -475,6 +535,7 @@ void setup() {
   analogSetPinAttenuation(VSENSE_PIN, ADC_11db);
   mtx = xSemaphoreCreateMutex();
   core = new n2k::Core();
+  cap = (CapFrame*)malloc(sizeof(CapFrame) * CAP_N);   // ≈ 40 KB; sin ella, la prueba funciona igual
 
   uint8_t mac[6]; WiFi.macAddress(mac);
   uint32_t uniq = ((uint32_t)mac[3] << 16 | (uint32_t)mac[4] << 8 | mac[5]) & 0x1FFFFF;
@@ -495,6 +556,7 @@ void setup() {
   server.on("/api/snapshot", handleSnapshot);
   server.on("/api/start", handleStart);
   server.on("/api/resume", handleResume);
+  server.on("/api/frames", handleFrames);
   server.on("/update", []() { sendAsset(UPDATE_HTML_GZ, sizeof(UPDATE_HTML_GZ), "text/html; charset=utf-8", false); });
   server.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
   server.onNotFound([]() { server.sendHeader("Location", "http://192.168.4.1/"); server.send(302, "text/plain", ""); });

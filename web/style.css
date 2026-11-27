@@ -135,3 +135,4 @@ input:focus{border-color:var(--ac)}
 .status.bad{border-color:rgba(239,83,80,.5)} .status.bad i{background:var(--fail)}
 .answers.one{grid-template-columns:1fr}
 .how p{margin:0;color:var(--mu)}
+.pdflink.csv{font-size:14px;color:var(--mu);margin-top:10px;text-decoration:underline}

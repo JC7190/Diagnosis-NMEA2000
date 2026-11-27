@@ -14,6 +14,49 @@
   function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove('show'), 3200); }
 
   // Petición con tiempo límite (si la Wi-Fi se corta, no se queda colgada)
+  // ---------- captura de tramas (CSV) ----------
+  // Durante la prueba se descargan las tramas del ESP32 cada 0,5 s y se guardan aquí.
+  const CAP = { lines: [], next: 0, lost: 0, on: false, timer: null, busy: false };
+  async function capFetch() {
+    if (CAP.busy) return 0;
+    CAP.busy = true;
+    try {
+      const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const to = ctl ? setTimeout(() => ctl.abort(), 8000) : null;
+      const r = await fetch('/api/frames?from=' + CAP.next, { cache: 'no-store', signal: ctl ? ctl.signal : undefined });
+      if (to) clearTimeout(to);
+      if (!r.ok) return 0;
+      const t = await r.text();
+      const nl = t.indexOf('\n');
+      const m = /#seq=(\d+);lost=(\d+)/.exec(t.slice(0, nl));
+      if (!m) return 0;
+      const lost = +m[2];
+      if (lost) { CAP.lost += lost; CAP.lines.push(`;;;;HUECO ${lost} tramas no descargadas`); }
+      const body = t.slice(nl + 1);
+      let got = 0;
+      if (body) { const ls = body.split('\n'); for (const l of ls) if (l) { CAP.lines.push(l); got++; } }
+      CAP.next = +m[1];
+      return got;
+    } catch (e) { return 0; } finally { CAP.busy = false; }
+  }
+  function capStart(reset) {
+    if (reset) { CAP.lines = []; CAP.next = 0; CAP.lost = 0; }
+    CAP.on = true; clearInterval(CAP.timer); CAP.timer = setInterval(capFetch, 500);
+  }
+  async function capStop() {
+    clearInterval(CAP.timer); CAP.timer = null;
+    if (!CAP.on) return;
+    CAP.on = false;
+    for (let i = 0; i < 20; i++) { const g = await capFetch(); if (g < 1200) break; }   // lo que quede
+  }
+  function capCsv(r) {
+    const d = r.date instanceof Date ? r.date : new Date();
+    const head = [`# PoweryMax Nmea2000 Diagnostic v${r.metrics.fw || ''} - captura de tramas`,
+      `# fecha=${d.toISOString()};referencia=${(r.ref || '').replace(/[;\n]/g, ' ')};duracion_s=${Math.round(r.metrics.dur / 1000)};modo=${r.metrics.mode};tramas=${CAP.lines.length};no_descargadas=${CAP.lost}`,
+      'marca_tiempo_us;id29_hex;dlc;datos_hex;flags'];
+    return head.concat(CAP.lines).join('\n') + '\n';
+  }
+
   async function api(path, ms) {
     const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const to = ctl ? setTimeout(() => ctl.abort(), ms || 10000) : null;
@@ -54,7 +97,7 @@
   // Si se recarga la página a mitad de una prueba, se vuelve a la pantalla que toca
   function restore(s) {
     const d = (s.live || {}).diag || {};
-    if (d.running) { S.finishing = false; S.startedAt = new Date(Date.now() - (d.elapsed || 0)); show('running'); S.pollMs = 1000; }
+    if (d.running) { S.finishing = false; S.startedAt = new Date(Date.now() - (d.elapsed || 0)); show('running'); S.pollMs = 1000; capStart(true); }
     else if (d.done && $('#home').classList.contains('active')) { S.finishing = true; stopPolling(); show('term'); }
   }
 
@@ -124,7 +167,7 @@
         : L.mode === 'active' && el < 22 ? 'Leyendo modelo, software y nº de serie…'
         : 'Vigilando estabilidad, errores y tensión…';
       $('#rDev').textContent = devs.filter((x) => x.sa !== 254).length; $('#rFr').textContent = b.frames || 0; $('#rErr').textContent = busErr;
-      if (d.done && !S.finishing) { S.finishing = true; stopPolling(); show('term'); }
+      if (d.done && !S.finishing) { S.finishing = true; stopPolling(); capStop(); show('term'); }
     }
   }
 
@@ -145,7 +188,7 @@
       $('#ringBar').style.strokeDashoffset = 326.7;
       $('#ringPct').textContent = '0 %'; $('#ringLeft').innerHTML = '&nbsp;';
       $('#rDev').textContent = '0'; $('#rFr').textContent = '0'; $('#rErr').textContent = '0';
-      show('running'); startPolling(1000);
+      show('running'); startPolling(1000); capStart(true);
     } catch (e) { toast('No se pudo iniciar. ¿Estás conectado a la Wi-Fi «PoweryMax Nmea2000 Diagnostic»?'); startPolling(2000); }
     btn.disabled = false;
   };
@@ -176,13 +219,13 @@
     if (!confirm('¿Cancelar la prueba? Se perderán los datos recogidos.')) return;
     stopPolling();
     try { await api('/api/resume'); } catch (e) { /* se reintenta al sondear */ }
-    S.finishing = true; show('home'); startPolling(2000);
+    S.finishing = true; capStop(); CAP.lines = []; show('home'); startPolling(2000);
   };
 
   $('#bNew').onclick = async () => {
     try { await api('/api/resume'); } catch (e) { /* se reintenta al sondear */ }
     if (S.pdfUrl) { URL.revokeObjectURL(S.pdfUrl); S.pdfUrl = null; }
-    $('#pdfLink').hidden = true; S.result = null; S.finishing = false;
+    $('#pdfLink').hidden = true; S.result = null; S.finishing = false; CAP.lines = [];
     show('home'); startPolling(2000);
   };
 
@@ -204,6 +247,7 @@
       : '<div class="empty">Nada que corregir 👍</div>';
     $('#findings').innerHTML = r.findings.map((f) =>
       `<div class="fd ${f.sev}"><b><span class="tag st ${f.sev}">${SEV[f.sev]}</span>${esc(f.title)}</b>${f.detail ? `<small>${esc(f.detail)}</small>` : ''}</div>`).join('');
+    $('#bCsv').hidden = !CAP.lines.length;
     $('#resDevs').innerHTML = r.devices.map((d) =>
       `<div class="dev"><div class="ic">${d.sa}</div><div class="tx"><b>${esc(d.label)}</b><small>${esc(d.mfrName)} · ${esc(d.typeName)}${d.pi && d.pi.sw ? ' · SW ' + esc(d.pi.sw) : ''}${d.pi && d.pi.serial ? ' · S/N ' + esc(d.pi.serial) : ''}</small></div><div class="st ${d.sev}">${SEV[d.sev]}</div></div>`).join('');
   }
@@ -233,6 +277,17 @@
     jspdf.then(() => (window.jspdf.jsPDF.API.autoTable ? null : load('autotable.js'))).then(() => (window.BRAND ? null : load('brand.js').catch(() => null))).then(go)
       .catch(() => toast('No se pudo cargar el generador de PDF. Vuelve a intentarlo.'))
       .finally(() => { btn.disabled = false; });
+  };
+
+  $('#bCsv').onclick = (ev) => {
+    ev.preventDefault();
+    const r = S.result; if (!r || !CAP.lines.length) return toast('No hay tramas capturadas en esta prueba.');
+    const d = r.date instanceof Date ? r.date : new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const name = `Captura_N2K_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+    const url = URL.createObjectURL(new Blob([capCsv(r)], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
   startPolling(2000);

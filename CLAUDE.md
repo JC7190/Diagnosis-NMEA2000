@@ -10,9 +10,14 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.5** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). En el ESP32 de Javi está grabada la v1.4 (por USB desde su Mac). **No se ha probado aún en hardware real.**
+- Firmware **v1.6** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
+
+### Cambios de la v1.6
+- **Captura de tramas en CSV**: búfer circular de 2048 tramas en el ESP32 (≈40 KB, `malloc` al arrancar), endpoint `GET /api/frames?from=N` (texto; 1.ª línea `#seq=<total>;lost=<n>`). La app lo pide cada 0,5 s durante la prueba y en el resultado ofrece «Descargar captura de tramas (CSV)» con formato `marca_tiempo_us;id29_hex;dlc;datos_hex;flags` (huecos marcados como `HUECO`).
+- **PDF**: «Resultado por áreas» (agrupado de lo físico a los datos, seguridad primero), sección «Limitaciones de la prueba» y tabla «Fuentes de los umbrales» (de `config.js`).
+- Pendiente de decidir con Javi: datos de canboat (seguir + aviso de licencia, o tablas propias) y búsqueda guiada «half-split».
 
 ### Cambios de la v1.5
 - Pantalla de terminadores: caras reales del conector Micro-C **macho y hembra** (figura 3 de NMEA 2000) con colores por pin (1 malla gris, 2 rojo +12 V, 3 negro GND, 4 blanco CAN-H, 5 azul CAN-L), explicación de los dos terminadores y respuesta nueva «El valor salta» (H/L cruzados o mal contacto).
@@ -106,7 +111,7 @@ test/
 ### Red y endpoints
 - Wi-Fi AP `PoweryMax Nmea2000 Diagnostic` / clave `nmea2000`, IP `192.168.4.1`, mDNS `powerymax.local`.
 - `GET /` UI · `GET /jspdf.js`, `/autotable.js` · `GET /api/snapshot` (JSON completo + bloque `live`; `?lite=1` sin PGNs)
-- `GET /api/start?dur=<s>&mode=active|passive` · `GET /api/resume`
+- `GET /api/start?dur=<s>&mode=active|passive` · `GET /api/resume` · `GET /api/frames?from=N` (captura)
 - `GET /update` · `POST /api/update` (multipart, campo `firmware`)
 
 ### Flujo del diagnóstico

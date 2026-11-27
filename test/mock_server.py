@@ -17,6 +17,13 @@ class H(http.server.BaseHTTPRequestHandler):
         if p == '/api/start':
             STATE['start'] = time.time(); STATE['mode'] = 'passive' if 'passive' in self.path else 'active'
             return self.send(b'{"ok":1}', 'application/json')
+        if p == '/api/frames':
+            # tramas de prueba: ~400 por segundo mientras dura la prueba
+            frm = int(self.path.split('from=')[1]) if 'from=' in self.path else 0
+            el = min(time.time() - STATE['start'], STATE['dur']) if STATE['start'] else 0
+            total = int(el * 400)
+            lines = ['#seq=%d;lost=0' % total] + ['%d;09F80105;8;0102030405060708;' % (i * 2500) for i in range(frm, total)]
+            return self.send(('\n'.join(lines) + '\n').encode(), 'text/plain')
         if p == '/api/resume':
             STATE['start'] = None; return self.send(b'{"ok":1}', 'application/json')
         if p == '/api/snapshot':

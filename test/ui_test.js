@@ -37,6 +37,10 @@ const shot = (pg, name, full) => pg.screenshot({ path: path.join(OUT, name), ful
   await dl.saveAs(path.join(OUT, 'ui_report.pdf')); console.log('descarga', dl.suggestedFilename());
   const full = reqs.filter((u) => /\/api\/snapshot$/.test(u)).length, lite = reqs.filter((u) => /lite=1/.test(u)).length;
   console.log(`sondeos ligeros ${lite}, completos ${full}`);
+  const [csv] = await Promise.all([pg.waitForEvent('download'), pg.click('#bCsv')]);
+  await csv.saveAs(path.join(OUT, 'captura.csv'));
+  const txt = require('fs').readFileSync(path.join(OUT, 'captura.csv'), 'utf8').split('\n');
+  console.log('captura CSV:', csv.suggestedFilename(), (txt.length - 4) + ' tramas;', txt[2]);
 
   // recarga a mitad de prueba: debe volver a la pantalla correcta
   await pg.click('#bNew'); await pg.waitForSelector('#home.active');
