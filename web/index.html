@@ -119,6 +119,24 @@
     </div>
   </section>
 
+  <!-- ===== Búsqueda guiada por tramos («half-split») ===== -->
+  <section id="split" class="screen">
+    <button class="back" id="bSplitBack">‹ Volver al resultado</button>
+    <h1>Buscar el fallo por tramos</h1>
+    <div class="card spRun" id="spRun" hidden>
+      <div class="spBar"><i id="spFill"></i></div>
+      <p id="spRunTxt">Escuchando este tramo…</p>
+    </div>
+    <div id="spRes"></div>
+    <div class="card how" id="spHow"></div>
+    <div id="spHist" class="list"></div>
+    <div class="spacer"></div>
+    <div class="cta two">
+      <button class="btn ghost" id="bSplitEnd">He terminado</button>
+      <button class="btn primary" id="bSplitGo">Medir este tramo</button>
+    </div>
+  </section>
+
   <!-- ===== Resultado ===== -->
   <section id="result" class="screen">
     <div id="verdict" class="verdict"></div>
@@ -127,6 +145,7 @@
     <div id="actions" class="list"></div>
     <details class="card fold"><summary>Detalle de las comprobaciones</summary><div id="findings"></div></details>
     <details class="card fold"><summary>Equipos en la red</summary><div id="resDevs"></div></details>
+    <button class="btn split big" id="bSplit" hidden>Buscar dónde está el fallo, paso a paso</button>
     <div class="spacer"></div>
     <div class="cta two">
       <button class="btn ghost" id="bNew">Nueva prueba</button>

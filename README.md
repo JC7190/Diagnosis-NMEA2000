@@ -40,4 +40,4 @@ node run_tests.js                                  # pruebas automáticas (3 red
 python3 mock_server.py 8765                        # web en http://127.0.0.1:8765 (node ui_test.js para la prueba de UI)
 ```
 
-Tablas de fabricantes y PGNs: proyecto canboat (Apache-2.0). PDF: jsPDF + jspdf-autotable (MIT).
+Tablas de fabricantes y PGNs: proyecto CANboat (Apache-2.0). PDF: jsPDF + jspdf-autotable (MIT). Créditos y licencias completas en `licencias/`.

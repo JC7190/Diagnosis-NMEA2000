@@ -136,3 +136,16 @@ input:focus{border-color:var(--ac)}
 .answers.one{grid-template-columns:1fr}
 .how p{margin:0;color:var(--mu)}
 .pdflink.csv{font-size:14px;color:var(--mu);margin-top:10px;text-decoration:underline}
+.btn.split{margin-top:14px;background:var(--card2);border:1px solid var(--ac);color:var(--tx)}
+.how h3{margin:0 0 8px;font-size:16px}
+.spRun{margin-bottom:12px}
+.spRun p{margin:8px 0 0;color:var(--mu);font-size:14px;text-align:center}
+.spBar{height:10px;background:#26262b;border-radius:99px;overflow:hidden}
+.spBar i{display:block;height:100%;width:0;background:var(--ac);transition:width .9s linear}
+.spOut{margin:0 0 12px;border-radius:14px;padding:14px 15px;border:1px solid var(--line);background:var(--card)}
+.spOut.bad{border-color:rgba(255,90,95,.6)} .spOut.good{border-color:rgba(67,196,99,.6)} .spOut.mid{border-color:rgba(255,176,32,.6)}
+.spOut b{display:block;font-size:17px;margin-bottom:4px}
+.spOut.bad b{color:var(--fail)} .spOut.good b{color:var(--ok)} .spOut.mid b{color:var(--warn)}
+.spOut p{margin:4px 0 0;color:var(--mu);font-size:14px}
+#spHist{margin-top:14px}
+#spHist .dev .st{white-space:nowrap}

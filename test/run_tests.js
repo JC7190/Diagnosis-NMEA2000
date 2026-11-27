@@ -118,6 +118,10 @@ console.log('\n[reglas]');
   s = clone(); s.live.mode = 'passive'; s.devices = s.devices.filter((d) => d.sa === 20); s.live.twai.busErr = 500;
   const rb = A.analyze(s, { term: '60' });
   ok(has(rb, 'info', /solo un equipo/) && !has(rb, 'fail', /errores/i), 'banco: un equipo en «solo escuchar» ≠ avería de errores');
+  ok(!rb.offerSplit, 'banco: no se ofrece la búsqueda por tramos');
+  ok(!A.analyze(base, { term: '60' }).offerSplit, 'red sin errores: no se ofrece la búsqueda por tramos');
+  s = clone(); s.live.twai.busErr = 40;
+  ok(A.analyze(s, { term: '60' }).offerSplit, 'red con errores: se ofrece la búsqueda por tramos');
 }
 
 console.log(fails ?`\n✗ ${fails} comprobaciones fallidas` : '\n✓ Todas las pruebas pasan');

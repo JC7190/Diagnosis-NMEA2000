@@ -502,7 +502,9 @@
 
     return {
       verdict, nFail, nWarn, findings: F, actions, devices: devs.sort((a, b) => a.sa - b.sa), pgnRows,
-      metrics: { dur, frames: bus.frames, loadAvg: bus.loadAvg, loadPeak: bus.loadPeak, errRate, busErr,
+      // búsqueda guiada por tramos: cuando hay errores de bus que no se pueden atribuir a un equipo
+      offerSplit: !!(bus.frames && busErr > 0 && !benchAck),
+      metrics: { dur, frames: bus.frames, loadAvg: bus.loadAvg, loadPeak: bus.loadPeak, errRate, busErr, errPerSec,
         v, nDev: devs.filter((d) => d.sa !== 254).length, lenTotal, mode: live.mode, term: manual.term || 'skip', fw: live.fw || '' },
       ref: manual.ref || '', date: manual.date || new Date(),
     };

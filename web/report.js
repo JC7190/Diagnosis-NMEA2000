@@ -174,6 +174,25 @@
       y += 12;
     }
 
+    // ---- Búsqueda del fallo por tramos (si se hizo) ----
+    if (r.split && r.split.length) {
+      if (y + 40 > BOTTOM) { doc.addPage(); y = 18; }
+      section('Búsqueda del fallo por tramos', 40);
+      const RS = { bad: ['fail', 'Con errores'], good: ['ok', 'Sin errores'], mid: ['warn', 'Dudoso'], none: ['na', 'Sin datos'] };
+      doc.autoTable(Object.assign({}, tableBase, {
+        startY: y,
+        head: [['Paso', 'Equipos en el tramo medido', 'Errores', 'Resultado']],
+        body: r.split.map((x) => [String(x.n), clean(x.devs.join(', ') || '-'), `${x.err} en ${x.dur} s`, { content: '', sev: RS[x.res][0], label: RS[x.res][1] }]),
+        columnStyles: { 0: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 24 }, 3: { cellWidth: 26 } },
+        didParseCell: (d) => {
+          if (d.section === 'body' && d.column.index === 3 && d.cell.raw && d.cell.raw.sev) {
+            d.cell.styles.textColor = C[d.cell.raw.sev]; d.cell.styles.fontStyle = 'bold'; d.cell.text = [d.cell.raw.label];
+          }
+        },
+      }));
+      y = doc.lastAutoTable.finalY + 10;
+    }
+
     // ---- Limitaciones de la prueba ----
     const lims = [];
     lims.push(m.term && m.term !== 'skip' ? 'Terminadores: medida hecha por el técnico con el polímetro y la red apagada.'

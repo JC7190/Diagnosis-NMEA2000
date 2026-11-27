@@ -25,6 +25,7 @@ button:disabled{filter:grayscale(1) brightness(.6)}
 #msg{text-align:center;min-height:24px;font-weight:600}
 .warn{margin-top:18px;font-size:14px;color:var(--mu)}
 .brand{margin-top:18px;display:flex;flex-direction:column;gap:4px}.brand .plogo{height:20px;width:auto;color:#fff}.brand .tag{font-size:10px;letter-spacing:2.6px;text-transform:uppercase;color:var(--mu);font-weight:600}.brand .tag b{color:var(--ac)}
+.credits{margin-top:26px;font-size:11.5px;color:var(--mu);line-height:1.5}
 </style>
 </head>
 <body>
@@ -45,6 +46,7 @@ button:disabled{filter:grayscale(1) brightness(.6)}
   <div class="bar" id="bar"><i id="fill"></i></div>
   <p id="msg"></p>
   <p class="warn">Si la actualización se corta o el firmware nuevo no arranca bien, el aparato vuelve solo a la versión anterior.</p>
+  <p class="credits">PoweryMax Nmea2000 Diagnostic. Tablas de fabricantes y mensajes: proyecto CANboat (Apache-2.0, © Kees Verruijt). Informe PDF: jsPDF y jsPDF-AutoTable (MIT). No certificado por NMEA; «NMEA 2000» es marca de la National Marine Electronics Association.</p>
 </main>
 <script>
 const $ = (s) => document.querySelector(s);

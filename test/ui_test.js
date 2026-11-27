@@ -42,6 +42,17 @@ const shot = (pg, name, full) => pg.screenshot({ path: path.join(OUT, name), ful
   const txt = require('fs').readFileSync(path.join(OUT, 'captura.csv'), 'utf8').split('\n');
   console.log('captura CSV:', csv.suggestedFilename(), (txt.length - 4) + ' tramas;', txt[2]);
 
+  // búsqueda guiada por tramos (la red del simulador tiene errores)
+  await pg.click('#bSplit'); await pg.waitForSelector('#split.active');
+  await shot(pg, 'ui6_split.png');
+  await pg.click('#bSplitGo');
+  await pg.waitForSelector('#spRes .spOut', { timeout: 30000 });
+  console.log('tramo medido:', await pg.textContent('#spRes .spOut b'));
+  await shot(pg, 'ui7_split_res.png', true);
+  await pg.click('#bSplitEnd'); await pg.waitForSelector('#result.active');
+  const [pdf2] = await Promise.all([pg.waitForEvent('download'), pg.click('#bPdf')]);
+  await pdf2.saveAs(path.join(OUT, 'ui_report_split.pdf'));
+
   // recarga a mitad de prueba: debe volver a la pantalla correcta
   await pg.click('#bNew'); await pg.waitForSelector('#home.active');
   await pg.click('#bSetup'); await pg.click('#bStart'); await pg.waitForSelector('#running.active');

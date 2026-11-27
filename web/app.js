@@ -248,6 +248,7 @@
     $('#findings').innerHTML = r.findings.map((f) =>
       `<div class="fd ${f.sev}"><b><span class="tag st ${f.sev}">${SEV[f.sev]}</span>${esc(f.title)}</b>${f.detail ? `<small>${esc(f.detail)}</small>` : ''}</div>`).join('');
     $('#bCsv').hidden = !CAP.lines.length;
+    $('#bSplit').hidden = !r.offerSplit;
     $('#resDevs').innerHTML = r.devices.map((d) =>
       `<div class="dev"><div class="ic">${d.sa}</div><div class="tx"><b>${esc(d.label)}</b><small>${esc(d.mfrName)} · ${esc(d.typeName)}${d.pi && d.pi.sw ? ' · SW ' + esc(d.pi.sw) : ''}${d.pi && d.pi.serial ? ' · S/N ' + esc(d.pi.serial) : ''}</small></div><div class="st ${d.sev}">${SEV[d.sev]}</div></div>`).join('');
   }
@@ -278,6 +279,91 @@
       .catch(() => toast('No se pudo cargar el generador de PDF. Vuelve a intentarlo.'))
       .finally(() => { btn.disabled = false; });
   };
+
+  // ---------- búsqueda guiada por tramos («half-split») ----------
+  // Se parte la red por la mitad, se mide si siguen los errores y se repite con la
+  // mitad que falla hasta llegar al cable o equipo culpable.
+  const SP = { steps: [], running: false, dur: 20, rare: false };
+  const devName = (x) => {
+    const pi = N2K.decodePI(x.pi), nm = N2K.decodeName(x.name);
+    return pi && pi.model ? pi.model : nm ? (LK.mfr[nm.mfr] || 'Equipo') : 'Equipo';
+  };
+  function spHow() {
+    const n = SP.steps.length + 1, lastS = SP.steps[SP.steps.length - 1];
+    const keep = '<li>Pon un terminador en el extremo que queda libre (puedes usar el que has quitado).</li><li>Enciende la red y pulsa <b>«Medir este tramo»</b>.</li>';
+    if (lastS && lastS.res === 'mid') {
+      $('#spHow').innerHTML = `<h3>Paso ${n}: repetir</h3><p>No cambies nada y pulsa <b>«Medir este tramo»</b> otra vez para confirmar el resultado.</p>`;
+      return;
+    }
+    let h = `<h3>Paso ${n}</h3><ol><li>Apaga la alimentación de la red.</li>`;
+    if (!lastS) h += '<li>Desconecta el cable principal <b>por la mitad</b>. Deja conectada la mitad donde está esta herramienta y la alimentación.</li>';
+    else if (lastS.res === 'bad') h += '<li>El fallo está en la parte que <b>sigue conectada</b>. Desconecta ahora <b>la mitad más alejada</b> de esa parte.</li>';
+    else if (lastS.res === 'good') h += '<li>El fallo estaba en lo que <b>quitaste en el paso anterior</b>. Vuelve a conectar <b>solo la mitad más cercana</b> de ese trozo.</li>';
+    else h += '<li>Revisa que la herramienta y la alimentación estén en la parte conectada, y repite la medida.</li>';
+    h += keep + '</ol>';
+    if (SP.rare) h += `<p class="tip">Los errores de esta red son poco frecuentes: cada medida dura ${SP.dur} s para poder verlos.</p>`;
+    h += '<p class="tip">Cuando lo que quitas o añades sea <b>un solo cable o un solo equipo</b>, ese es el culpable: revisa su conector o cámbialo.</p>';
+    $('#spHow').innerHTML = h;
+  }
+  function spHist() {
+    const T = { bad: ['fail', 'Con errores'], good: ['ok', 'Sin errores'], mid: ['warn', 'Dudoso'], none: ['warn', 'Sin datos'] };
+    $('#spHist').innerHTML = SP.steps.slice().reverse().map((x) => `<div class="dev"><div class="ic">${x.n}</div><div class="tx"><b>Paso ${x.n}: ${x.devs.length} equipo${x.devs.length === 1 ? '' : 's'}</b><small>${esc(x.devs.join(', ') || '—')}</small></div><div class="st ${T[x.res][0]}">${T[x.res][1]}${x.err ? ` (${x.err})` : ''}</div></div>`).join('');
+  }
+  function spOpen() {
+    SP.steps = (S.result && S.result.split) || [];
+    const eps = (S.result && S.result.metrics.errPerSec) || 0;
+    // duración: la necesaria para ver unos 10 errores con la frecuencia que tenía la red (20–120 s)
+    SP.dur = Math.min(120, Math.max(20, Math.ceil(10 / Math.max(eps, 0.0001))));
+    SP.rare = SP.dur > 20;
+    $('#spRes').innerHTML = ''; $('#spRun').hidden = true;
+    spHow(); spHist(); show('split');
+  }
+  async function spMeasure() {
+    if (SP.running) return;
+    SP.running = true;
+    ['#bSplitGo', '#bSplitEnd', '#bSplitBack'].forEach((q) => { $(q).disabled = true; });
+    $('#spRes').innerHTML = ''; $('#spRun').hidden = false; $('#spFill').style.width = '0';
+    let snap = null;
+    try {
+      await api(`/api/start?dur=${SP.dur}&mode=active`);
+      const t0 = Date.now();
+      for (;;) {
+        await new Promise((ok) => setTimeout(ok, 1000));
+        try { snap = await api('/api/snapshot?lite=1', 6000); } catch (e) { continue; }
+        const d = (snap.live || {}).diag || {};
+        const pct = d.duration ? Math.min(100, d.elapsed / d.duration * 100) : 0;
+        $('#spFill').style.width = pct + '%';
+        $('#spRunTxt').textContent = `Escuchando este tramo… quedan ${Math.max(0, Math.ceil((d.duration - d.elapsed) / 1000))} s · ${(snap.live.twai || {}).busErr || 0} errores`;
+        if (d.done) break;
+        if (Date.now() - t0 > (SP.dur + 30) * 1000) throw new Error('tiempo');
+      }
+    } catch (e) {
+      toast('No se pudo medir. Comprueba que sigues conectado a la Wi-Fi de la herramienta.');
+      SP.running = false; ['#bSplitGo', '#bSplitEnd', '#bSplitBack'].forEach((q) => { $(q).disabled = false; }); $('#spRun').hidden = true;
+      return;
+    }
+    const b = snap.bus || {}, err = (snap.live.twai || {}).busErr || 0;
+    const own = b.ownAddr;
+    const devs = (snap.devices || []).filter((x) => x.sa !== own && x.sa !== 254).map(devName);
+    const eps = (S.result && S.result.metrics.errPerSec) || 0;
+    let res, title, txt;
+    if (!b.frames) { res = 'none'; title = 'No llega nada en este tramo'; txt = 'Comprueba que la herramienta y la alimentación están en la parte conectada y que hay un terminador en cada extremo.'; }
+    else if (err > 0) { res = 'bad'; title = `Sigue habiendo errores (${err} en ${SP.dur} s)`; txt = 'El fallo está en la parte que sigue conectada.'; }
+    else if (eps * SP.dur < 3) { res = 'mid'; title = 'Sin errores, pero no es seguro'; txt = 'Los errores eran muy poco frecuentes. Repite esta medida para confirmarlo antes de seguir.'; }
+    else { res = 'good'; title = 'Sin errores en este tramo'; txt = 'El fallo estaba en lo que has quitado en este paso.'; }
+    SP.steps.push({ n: SP.steps.length + 1, devs, err, frames: b.frames || 0, dur: SP.dur, res });
+    const cls = { bad: 'bad', good: 'good', mid: 'mid', none: 'mid' }[res];
+    $('#spRes').innerHTML = `<div class="spOut ${cls}"><b>${esc(title)}</b><p>${esc(txt)}</p><p>En este tramo: ${esc(devs.join(', ') || 'ningún equipo')}.</p></div>`;
+    $('#spRun').hidden = true;
+    SP.running = false; ['#bSplitGo', '#bSplitEnd', '#bSplitBack'].forEach((q) => { $(q).disabled = false; });
+    // si la medida fue dudosa o sin datos, el siguiente paso repite el mismo tramo
+    spHow(); spHist();
+  }
+  function spClose() { if (SP.running) return; if (S.result) S.result.split = SP.steps; show('result'); }
+  $('#bSplit').onclick = spOpen;
+  $('#bSplitGo').onclick = spMeasure;
+  $('#bSplitEnd').onclick = spClose;
+  $('#bSplitBack').onclick = spClose;
 
   $('#bCsv').onclick = (ev) => {
     ev.preventDefault();
