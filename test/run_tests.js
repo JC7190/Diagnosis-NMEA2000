@@ -119,6 +119,11 @@ console.log('\n[reglas]');
   const rb = A.analyze(s, { term: '60' });
   ok(has(rb, 'info', /solo un equipo/) && !has(rb, 'fail', /errores/i), 'banco: un equipo en «solo escuchar» ≠ avería de errores');
   ok(!rb.offerSplit, 'banco: no se ofrece la búsqueda por tramos');
+  // sin nada conectado: entrada de tensión al aire (ruido 4–19 V) → sin averías de tensión
+  s = clone(); s.bus.frames = 0; s.devices = []; s.pgns = []; s.live.v = { ok: 0, fl: 1, now: 7.2, min: 0, max: 0, avg: 0, dev: 0 };
+  const rf = A.analyze(s, { term: '120' });
+  ok(!rf.findings.some((f) => /Tensi|Saltos/.test(f.title) && f.sev !== 'na') && rf.findings.some((f) => f.sev === 'na' && /fiable/.test(f.detail)),
+    'entrada de tensión al aire: «no medido», sin averías de tensión');
   ok(!A.analyze(base, { term: '60' }).offerSplit, 'red sin errores: no se ofrece la búsqueda por tramos');
   s = clone(); s.live.twai.busErr = 40;
   ok(A.analyze(s, { term: '60' }).offerSplit, 'red con errores: se ofrece la búsqueda por tramos');

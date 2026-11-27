@@ -15,7 +15,7 @@
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.8"
+#define FW_VERSION   "1.9"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
@@ -80,7 +80,10 @@ static const uint32_t REQ_PGN[3] = { 60928, 126996, 126998 };
 uint32_t reqLastMs = 0;
 
 // Tensión (protegida por el mutex)
-float vNow = 0, vMin = 99, vMax = 0, vEma = 0, vDev = 0; double vSum = 0; uint32_t vN = 0;
+float vNow = 0, vMin = 99, vMax = 0, vEma = 0, vDev = 0, vPrev = -1; double vSum = 0; uint32_t vN = 0;
+// Entrada al aire (divisor sin conectar): lecturas al azar. Se detecta por lecturas casi a 0
+// mezcladas con otras altas, o por saltos imposibles entre lecturas seguidas.
+uint32_t vTot = 0, vLow = 0, vJump = 0;
 // Contadores TWAI: base al iniciar, último leído y congelado al terminar (protegidos por el mutex)
 twai_status_info_t twBase, twNow, twEnd;
 uint32_t alBusOff = 0, alErrPass = 0, alRecovered = 0;
@@ -237,7 +240,7 @@ int64_t capT0 = 0;
 static void resetCounters(uint32_t now) {
   capSeq = 0; capT0 = esp_timer_get_time();
   core->reset(now);
-  vMin = 99; vMax = 0; vSum = 0; vN = 0; vDev = 0;
+  vMin = 99; vMax = 0; vSum = 0; vN = 0; vDev = 0; vPrev = -1; vTot = 0; vLow = 0; vJump = 0;
   alBusOff = alErrPass = alRecovered = 0;
   if (canRunning) twai_get_status_info(&twBase);
   twNow = twBase;
@@ -360,6 +363,10 @@ void canTask(void*) {
       float v = (mv / 8) * VDIV / 1000.0f;
       xSemaphoreTake(mtx, portMAX_DELAY);
       vNow = v;
+      vTot++;
+      if (v <= 4.0f) vLow++;
+      if (vPrev >= 0 && fabsf(v - vPrev) > 3.0f) vJump++;   // >3 V en 50 ms: imposible en una batería
+      vPrev = v;
       if (v > 4.0f) {
         if (v < vMin) vMin = v;
         if (v > vMax) vMax = v;
@@ -403,19 +410,21 @@ void handleSnapshot() {
   xSemaphoreTake(mtx, portMAX_DELAY);
   bool done = frozen && diagStart && !diagRunning;
   twai_status_info_t st = done ? twEnd : twNow;
-  bool vok = vN > 0;
+  // lectura no fiable: más del 5 % de lecturas casi a 0 mezcladas con altas, o más del 10 % de saltos imposibles
+  bool vfloat = vN > 0 && (vLow * 20 > vTot || vJump * 10 > vTot);
+  bool vok = vN > 0 && !vfloat;
   uint32_t el = diagStart ? ((diagRunning ? now : diagStart + diagDur) - diagStart) : 0;
   // si está congelado, el "ahora" del análisis es el final del diagnóstico
   uint32_t t = done ? diagStart + diagDur : now;
   snprintf(live, sizeof(live),
     "\"live\":{\"fw\":\"" FW_VERSION "\",\"mode\":\"%s\",\"frozen\":%d,\"up\":%u,"
     "\"diag\":{\"running\":%d,\"elapsed\":%u,\"duration\":%u,\"done\":%d},"
-    "\"v\":{\"now\":%.2f,\"min\":%.2f,\"max\":%.2f,\"avg\":%.2f,\"dev\":%.2f,\"ok\":%d,\"n\":%u},"
+    "\"v\":{\"now\":%.2f,\"min\":%.2f,\"max\":%.2f,\"avg\":%.2f,\"dev\":%.2f,\"ok\":%d,\"n\":%u,\"fl\":%d},"
     "\"twai\":{\"state\":\"%s\",\"tec\":%u,\"rec\":%u,\"busErr\":%u,\"missed\":%u,\"overrun\":%u,\"arbLost\":%u,\"txFailed\":%u},"
     "\"alerts\":{\"busOff\":%u,\"errPass\":%u,\"recovered\":%u},\"ownTx\":%u,\"ownTxFail\":%u,\"heap\":%u}",
     activeMode ? "active" : "passive", frozen ? 1 : 0, (unsigned)(now / 1000),
     diagRunning ? 1 : 0, (unsigned)el, (unsigned)diagDur, done ? 1 : 0,
-    vNow, vok ? vMin : 0, vok ? vMax : 0, vok ? (float)(vSum / vN) : 0, vok ? vDev : 0, vok ? 1 : 0, (unsigned)vN,
+    vNow, vok ? vMin : 0, vok ? vMax : 0, vok ? (float)(vSum / vN) : 0, vok ? vDev : 0, vok ? 1 : 0, (unsigned)vN, vfloat ? 1 : 0,
     twState, (unsigned)st.tx_error_counter, (unsigned)st.rx_error_counter,
     (unsigned)(st.bus_error_count - twBase.bus_error_count), (unsigned)(st.rx_missed_count - twBase.rx_missed_count),
     (unsigned)(st.rx_overrun_count - twBase.rx_overrun_count), (unsigned)(st.arb_lost_count - twBase.arb_lost_count),

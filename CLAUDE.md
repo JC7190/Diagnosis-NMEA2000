@@ -10,9 +10,12 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.8** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
+- Firmware **v1.9** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
+
+### Cambios de la v1.9
+- **Entrada de tensión al aire** (GPIO34 sin divisor o herramienta sin red): leía ruido 0–19 V y daba falsas averías (tensión peligrosa, baja, saltos). Ahora el firmware cuenta lecturas casi a 0 (`vLow`) y saltos >3 V entre lecturas seguidas (`vJump`); si superan el 5 % / 10 % marca `v.fl=1` y `v.ok=0`. El análisis lo da como «NO MEDIDO: lectura no fiable» y la app muestra «—  lectura no fiable».
 
 ### Cambios de la v1.8 (primera prueba en el ESP32 real)
 - **Memoria**: con el búfer de captura de 40 KB solo quedaban ~50 KB libres y `twai_driver_install` fallaba (CAN en «error») y la web no respondía. Búfer reducido a 1024 tramas (≈20 KB; el iPhone lo pide cada 0,4 s). Con el iPhone conectado quedan ≈57 KB libres, estables (sin fugas). **No añadir más memoria fija sin medir `heap`.**

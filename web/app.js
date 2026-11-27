@@ -108,7 +108,7 @@
   // Estado de la conexión explicado en palabras sencillas (pantalla de inicio)
   function homeStatus(s, nDev, er) {
     const L = s.live || {}, b = s.bus || {}, v = L.v || {};
-    const hasV = v.now > 4;
+    const hasV = v.now > 4 && !v.fl;
     if (!b.frames) {
       if ((s.dur || 0) < 4000) return setStatus('wait', 'Escuchando la red…', 'Un momento, buscando equipos.');
       if (!hasV) return setStatus('bad', 'No llega nada de la red', 'Comprueba que la herramienta está conectada a una T del backbone y que la red NMEA 2000 tiene alimentación (interruptor y fusible).');
@@ -128,8 +128,9 @@
     // inicio
     const tile = (id, val, cls) => { const el = $(id); el.textContent = val; el.parentElement.classList.remove('bad', 'mid', 'good'); if (cls) el.parentElement.classList.add(cls); };
     const TV = CFG.tension;
-    tile('#tV', v.now > 4 ? fmt(v.now, 1) + ' V' : '—', v.now > 4 ? (v.now < TV.falloBajo || v.now > TV.falloAlto ? 'bad' : v.now < TV.avisoBajo ? 'mid' : 'good') : null);
-    $('#tVs').textContent = v.ok ? `mín ${fmt(v.min, 1)} · máx ${fmt(v.max, 1)}` : 'sin lectura';
+    const vGood = v.now > 4 && !v.fl;   // fl = entrada al aire: valores al azar
+    tile('#tV', vGood ? fmt(v.now, 1) + ' V' : '—', vGood ? (v.now < TV.falloBajo || v.now > TV.falloAlto ? 'bad' : v.now < TV.avisoBajo ? 'mid' : 'good') : null);
+    $('#tVs').textContent = v.fl ? 'lectura no fiable' : v.ok ? `mín ${fmt(v.min, 1)} · máx ${fmt(v.max, 1)}` : 'sin lectura';
     tile('#tLoad', fmt(b.loadNow, 0) + ' %', b.loadNow >= CFG.carga.fallo ? 'bad' : b.loadNow >= CFG.carga.aviso ? 'mid' : null);
     $('#tLoads').textContent = `pico ${fmt(b.loadPeak, 0)} %`;
     const nDev = devs.filter((x) => x.sa !== 254).length;

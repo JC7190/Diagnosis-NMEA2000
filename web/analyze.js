@@ -190,7 +190,9 @@
       if (v.min >= TV.avisoBajo && v.max <= TV.falloAlto && !unstable)
         add('ok', 'Alimentación', `Tensión correcta (${fmt(v.min, 1)}–${fmt(v.max, 1)} V)`, '', '');
     } else {
-      add('na', 'Alimentación', 'Tensión de la red no medida', 'El sensor de tensión de la herramienta no da lectura.', '');
+      add('na', 'Alimentación', 'Tensión de la red no medida', v.fl
+        ? 'La lectura de tensión no es fiable (valores al azar): la herramienta no está conectada a la red o el divisor de tensión (pin 34) está suelto. No se ha usado para el diagnóstico.'
+        : 'La herramienta no recibe tensión de la red por su entrada de medida.', '');
     }
 
     // ---- 3. Terminadores (PHY-08, medida manual: prevalece sobre las estimaciones) ----
