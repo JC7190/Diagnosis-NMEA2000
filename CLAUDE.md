@@ -10,9 +10,16 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.2** (revisión a fondo) compilando con core esp32 3.3.13 (≈1,20 MB, 60 % de `min_spiffs`). **No se ha probado aún en hardware real.**
+- Firmware **v1.3** compilando con core esp32 3.3.13 (≈1,20 MB, 60 % de `min_spiffs`). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
+
+### Cambios de la v1.3
+- Inicio: aviso de estado en lenguaje sencillo (sin conexión / no llega nada / hay tensión pero no datos / red detectada).
+- Prueba en curso: botón "Cancelar prueba" (con confirmación).
+- Tras la pregunta del terminador, solo si alguna sonda no da profundidad, se pregunta si el transductor está en el agua (Sí → avería, No → informativo, No lo sé → revisar).
+- En prueba completa la herramienta contesta a las peticiones de información de producto (126996, se anuncia como "N2K Diagnostico") y responde NAK (59392) a peticiones dirigidas de otros PGN.
+- Memoria libre visible en /update; aviso informativo en el informe si baja de 25 KB.
 
 ### Cambios de la v1.2 (resumen)
 - El driver TWAI solo se toca desde la tarea CAN (antes la web lo reinstalaba en paralelo → posible cuelgue). La tarea CAN va en el **núcleo 1**, procesa tramas por lotes y siempre hace sus tareas periódicas aunque la red vaya llena.
@@ -69,7 +76,7 @@ firmware/n2kdiag/
   fast_pgns.h      Generado (lista de PGNs fast-packet desde canboat)
   web_assets.h     Generado (web en gzip PROGMEM) — NO editar a mano
 web/
-  index.html, style.css, app.js   UI (pantallas: inicio, ajustes, en curso, pregunta terminador, resultado)
+  index.html, style.css, app.js   UI (pantallas: inicio, ajustes, en curso, pregunta terminador, pregunta sonda, resultado)
   analyze.js      Motor de diagnóstico: snapshot JSON → veredicto, hallazgos, acciones, tablas
   report.js       PDF A4 con jsPDF + autotable
   lookups.js      Generado (fabricantes, clases de dispositivo…) — usa `var LK`, no `const`

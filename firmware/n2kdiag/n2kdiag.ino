@@ -14,7 +14,7 @@
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.2"
+#define FW_VERSION   "1.3"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
@@ -29,6 +29,8 @@ void canTask(void*);
 void sendFrame(uint32_t pgn, uint8_t da, const uint8_t* d, uint8_t len, uint8_t prio);
 void sendClaim();
 void sendRequest(uint32_t pgn, uint8_t da);
+void sendProductInfo();
+void sendNak(uint32_t pgn, uint8_t to);
 void activeSchedule(uint32_t el, uint32_t now);
 void applyCommand(uint32_t now);
 bool runCommand(int cmd, uint32_t durMs, bool active);
@@ -117,6 +119,41 @@ void sendClaim() {
   sendFrame(60928, 255, d, 8, 6);
   core->noteOwnClaim(millis());
   claimed = true;
+}
+
+// Información de producto propia (126996, fast packet de 134 bytes): así las
+// pantallas muestran la herramienta correctamente en su lista de equipos
+void sendProductInfo() {
+  uint8_t pi[134];
+  memset(pi, 0xFF, sizeof(pi));
+  pi[0] = 2100 & 0xFF; pi[1] = 2100 >> 8;          // versión NMEA 2000 (2.100)
+  pi[2] = 0xFF; pi[3] = 0xFF;                        // código de producto: sin asignar
+  auto put = [&](int o, const char* t) { for (int i = 0; i < 32 && t[i]; i++) pi[o + i] = t[i]; };
+  char serial[17]; snprintf(serial, sizeof(serial), "%06X", (unsigned)(core->ownName & 0x1FFFFF));
+  put(4, "N2K Diagnostico"); put(36, FW_VERSION); put(68, "ESP32"); put(100, serial);
+  pi[132] = 0;   // nivel de certificación
+  pi[133] = 3;   // consumo: 3 LEN (150 mA)
+  static uint8_t seq = 0;
+  seq = (seq + 1) & 7;
+  uint8_t f[8]; int idx = 0, p = 0;
+  while (p < (int)sizeof(pi)) {
+    f[0] = (seq << 5) | idx;
+    int k = 1;
+    if (idx == 0) { f[1] = sizeof(pi); k = 2; }
+    for (; k < 8; k++) f[k] = p < (int)sizeof(pi) ? pi[p++] : 0xFF;
+    if (!canRunning || !activeMode) return;
+    twai_message_t m = {};
+    m.extd = 1; m.identifier = n2k::Core::makeId(6, 126996, 255, core->ownAddr); m.data_length_code = 8;
+    memcpy(m.data, f, 8);
+    if (twai_transmit(&m, pdMS_TO_TICKS(3)) == ESP_OK) core->bus.ownTx++; else { core->bus.ownTxFail++; return; }
+    idx++;
+  }
+}
+
+// Respuesta "no disponible" (ISO Acknowledgement 59392, NAK) a una petición dirigida
+void sendNak(uint32_t pgn, uint8_t to) {
+  uint8_t d[8] = { 1, 0xFF, 0xFF, 0xFF, to, (uint8_t)(pgn & 0xFF), (uint8_t)((pgn >> 8) & 0xFF), (uint8_t)((pgn >> 16) & 0xFF) };
+  sendFrame(59392, to, d, 8, 6);
 }
 
 void sendRequest(uint32_t pgn, uint8_t da) {
@@ -269,9 +306,14 @@ void canTask(void*) {
       }
       // solo contestamos si ya hemos reclamado dirección en este diagnóstico
       if (core->answerClaimRequest) { core->answerClaimRequest = false; if (claimed) sendClaim(); }
+      // tras reclamar dirección (y los 250 ms que marca la norma) atendemos las peticiones
+      if (claimed && now - diagStart >= 300) {
+        if (core->answerPiRequest) { core->answerPiRequest = false; sendProductInfo(); }
+        if (core->nakPgn) { sendNak(core->nakPgn, core->nakTo); core->nakPgn = 0; }
+      }
       activeSchedule(now - diagStart, now);
     } else {
-      core->answerClaimRequest = false; core->claimLost = false;
+      core->answerClaimRequest = false; core->claimLost = false; core->answerPiRequest = false; core->nakPgn = 0;
     }
     // Fin del diagnóstico
     if (diagRunning && now - diagStart >= diagDur) {

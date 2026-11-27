@@ -236,6 +236,13 @@ static const char* scenarioLimpia() {
     // Una pantalla pide las direcciones a todos a los 20 s: todos contestan (no son reinicios)
     if (NOW == 20000) { isoRequest(0, 60928); }
     if (NOW == 20030) for (auto& d : devs) claim(d.sa, d.name);
+    // La pantalla pide la información de producto a todos y otro PGN solo a la herramienta:
+    // el núcleo debe marcar que hay que contestar (126996) y que hay que dar un NAK (126464)
+    if (NOW == 25000) {
+      isoRequest(0, 126996); isoRequest(0, 126464, core->ownAddr);
+      if (!core->answerPiRequest || core->nakPgn != 126464 || core->nakTo != 0) { fprintf(stderr, "FALLO: peticiones a la herramienta\n"); exit(3); }
+      core->answerPiRequest = false; core->nakPgn = 0;
+    }
     // Un equipo nuevo se enciende y reclama la dirección del GPS; el GPS (NAME menor) la
     // defiende y el nuevo se va a la 6: reparto normal de direcciones
     if (NOW == 30000) claim(5, newcomer);

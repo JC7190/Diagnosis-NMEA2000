@@ -36,7 +36,7 @@ void Core::reset(uint32_t now) {
   pgUsed = 0; pgOverflow = 0; fpErrTotal = 0; dataUsed = 0;
   startMs = now; bus.winStart = now;
   requestsSentAt = 0; claimReqMs = 0; claimReqSeen = false;
-  claimLost = false; answerClaimRequest = false;
+  claimLost = false; answerClaimRequest = false; answerPiRequest = false; nakPgn = 0;
 }
 
 void Core::parseId(uint32_t id, uint32_t& pgn, uint8_t& sa, uint8_t& da, uint8_t& prio) {
@@ -270,6 +270,10 @@ void Core::onMessage(uint8_t sa, uint8_t da, uint32_t pgn, const uint8_t* d, int
     if (req == PGN_ADDR_CLAIM) {
       noteClaimRequest(now);   // otro equipo (p. ej. una pantalla) pide las direcciones
       if (da == 255 || da == ownAddr) answerClaimRequest = true;
+    } else if (req == PGN_PRODUCT_INFO) {
+      if (da == 255 || da == ownAddr) answerPiRequest = true;
+    } else if (da == ownAddr && sa != ownAddr) {
+      nakPgn = req; nakTo = sa;   // la norma pide contestar "no disponible"
     }
   } else if (pgn == PGN_PRODUCT_INFO) {
     Info* in = infoFor(sa);

@@ -18,6 +18,7 @@
 <main>
   <!-- ===== Inicio / en directo ===== -->
   <section id="home" class="screen active">
+    <div id="status" class="status wait"><i></i><div><b id="stT">Buscando la herramienta…</b><small id="stD">Conéctate a la Wi-Fi N2K-Diagnostico.</small></div></div>
     <h2 class="eyebrow">Red en directo</h2>
     <div class="tiles">
       <div class="tile"><span>Tensión</span><b id="tV">-</b><small id="tVs">&nbsp;</small></div>
@@ -67,7 +68,9 @@
       <div class="tile"><span>Tramas</span><b id="rFr">0</b></div>
       <div class="tile"><span>Errores</span><b id="rErr">0</b></div>
     </div>
-    <p class="hint center">Si buscas un fallo intermitente, mueve ahora cables y conectores o arranca el motor.</p>
+    <p class="hint center">No desconectes la herramienta ni cierres esta página.<br>Si buscas un fallo intermitente, mueve ahora cables y conectores o arranca el motor.</p>
+    <div class="spacer"></div>
+    <div class="cta"><button class="btn ghost big" id="bCancel">Cancelar prueba</button></div>
   </section>
 
   <!-- ===== Terminadores ===== -->
@@ -98,6 +101,18 @@
       <button data-v="open"><b>Muy alto o infinito</b></button>
       <button data-v="short"><b>Casi 0 Ω</b></button>
       <button data-v="skip"><b>No lo he medido</b></button>
+    </div>
+  </section>
+
+  <!-- ===== Sonda (solo si alguna sonda no da profundidad) ===== -->
+  <section id="water" class="screen">
+    <h1>Una pregunta más</h1>
+    <div class="card how"><p>Hay una sonda que no está dando profundidad. Para saber si es una avería necesito saber dónde está su transductor.</p></div>
+    <p class="q">¿El transductor de la sonda está dentro del agua?</p>
+    <div class="answers one" id="ansWater">
+      <button data-v="yes"><b>Sí, está en el agua</b><small>El barco está a flote</small></button>
+      <button data-v="no"><b>No, está fuera del agua</b><small>Barco en tierra, en el remolque o en el taller</small></button>
+      <button data-v="unk"><b>No lo sé</b></button>
     </div>
   </section>
 

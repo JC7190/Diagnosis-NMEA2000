@@ -390,9 +390,24 @@
           `El ${fmt(e.na / e.n * 100, 0)} % de los mensajes llegaron vacíos.`, someAction, e.sa);
       });
     };
-    naCheck(128267, 'Sondas', 'no da profundidad', 'Envía el mensaje de profundidad pero siempre vacío.',
-      'Normal si el transductor está fuera del agua. Si está en el agua: revisa el cable y el conector del transductor y que no tenga suciedad o pintura.',
-      'pierde la profundidad a ratos', 'Normal en aguas muy someras, muy profundas o con burbujas. Si no, revisa la instalación y el cable del transductor.');
+    // Profundidad: depende de si el transductor está en el agua (lo responde el usuario
+    // solo cuando hace falta). En el agua y sin profundidad = avería; fuera = normal.
+    lastOf(128267).forEach((e) => {
+      if (!e.n || !e.na) return;
+      const w = manual.water;
+      if (e.na >= e.n) {
+        if (w === 'no') add('info', 'Sondas', `${devLabel(e.sa)} sin profundidad (transductor fuera del agua)`,
+          'Con el transductor fuera del agua es normal que no dé profundidad.', '', e.sa);
+        else if (w === 'yes') add('fail', 'Sondas', `${devLabel(e.sa)} no da profundidad con el transductor en el agua`,
+          'Envía el mensaje de profundidad pero siempre vacío, y el transductor está en el agua.',
+          'Revisa el cable y el conector del transductor (pines, humedad, cortes) y que la cara del transductor esté limpia, sin pintura ni burbujas. Si todo está bien, prueba otro transductor.', e.sa);
+        else add('warn', 'Sondas', `${devLabel(e.sa)} no da profundidad`, 'Envía el mensaje de profundidad pero siempre vacío.',
+          'Normal si el transductor está fuera del agua. Si está en el agua: revisa el cable y el conector del transductor y que no tenga suciedad o pintura.', e.sa);
+      } else if (w !== 'no' && e.n >= 10 && e.na / e.n > 0.1) {
+        add('warn', 'Sondas', `${shortLabel(e.sa)} pierde la profundidad a ratos`, `El ${fmt(e.na / e.n * 100, 0)} % de los mensajes llegaron vacíos.`,
+          'Normal en aguas muy someras, muy profundas o con burbujas. Si no, revisa la instalación y el cable del transductor.', e.sa);
+      }
+    });
     naCheck(129025, 'GPS', 'sin posición', 'El GPS está conectado pero no da posición.',
       'Comprueba que tenga cielo despejado. Si sigue sin posición en exterior varios minutos, revisa antena y cable.',
       'pierde la posición a ratos', 'Revisa la ubicación de la antena (sin obstáculos ni metal cerca) y su cable.');
@@ -413,6 +428,8 @@
       'La suma de consumos declarados por los equipos es alta.', 'Comprueba la tensión en el extremo más lejano del backbone y alimenta la red por el centro si cae mucho.');
 
     // ---- 13. Límites de la herramienta ----
+    if (live.heap && live.heap < 25000) add('info', 'Herramienta', 'Memoria de la herramienta baja',
+      `Quedaban ${Math.round(live.heap / 1024)} KB libres. Si la app va lenta o se corta, reinicia la herramienta.`, '');
     if (bus.pgOverflow > 0) add('info', 'Herramienta', 'Red muy grande: no se han registrado todos los mensajes',
       'La tabla de mensajes de la herramienta se llenó; el análisis de algunos mensajes puede estar incompleto.', '');
 
@@ -450,6 +467,11 @@
     };
   }
 
-  const API = { analyze, decodeName, decodePI, decodeCI, fmt, secs, pgnName };
+  // ¿Hace falta preguntar si el transductor está en el agua? (alguna sonda sin profundidad)
+  function needsWaterQuestion(snap) {
+    return (snap.pgns || []).some((e) => e.pgn === 128267 && e.n > 0 && e.na > 0 && (e.na >= e.n || (e.n >= 10 && e.na / e.n > 0.1)));
+  }
+
+  const API = { analyze, needsWaterQuestion, decodeName, decodePI, decodeCI, fmt, secs, pgnName };
   if (typeof module !== 'undefined') module.exports = API; else root.N2K = API;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -30,7 +30,7 @@ button:disabled{filter:grayscale(1) brightness(.6)}
 <main>
   <a class="back" href="/">‹ Volver</a>
   <h1>Actualizar firmware</h1>
-  <p class="ver">Versión instalada: <b id="v">…</b></p>
+  <p class="ver">Versión instalada: <b id="v">…</b><span id="mem"></span></p>
   <div class="card">
     <ol>
       <li>Guarda en el iPhone el archivo <b>Diagnostico_N2K_actualizacion_vX.Y.bin</b> (no el de grabar por USB).</li>
@@ -46,7 +46,7 @@ button:disabled{filter:grayscale(1) brightness(.6)}
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
-fetch('/api/snapshot?lite=1', { cache: 'no-store' }).then((r) => r.json()).then((s) => { $('#v').textContent = (s.live && s.live.fw) || '-'; }).catch(() => { $('#v').textContent = '-'; });
+fetch('/api/snapshot?lite=1', { cache: 'no-store' }).then((r) => r.json()).then((s) => { $('#v').textContent = (s.live && s.live.fw) || '-'; if (s.live && s.live.heap) $('#mem').textContent = ` · memoria libre ${Math.round(s.live.heap / 1024)} KB`; }).catch(() => { $('#v').textContent = '-'; });
 $('#file').onchange = () => {
   const f = $('#file').files[0];
   $('#pickTxt').textContent = f ? `${f.name} (${Math.round(f.size / 1024)} KB)` : 'Elegir archivo .bin';

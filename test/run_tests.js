@@ -38,6 +38,10 @@ console.log('\n[averias]');
   ok(has(r, 'warn', /no da profundidad/), 'sonda sin profundidad');
   ok(has(r, 'warn', /Tensión inestable/), 'tensión inestable');
   ok(has(r, 'warn', /Errores de comunicación/), 'errores CAN');
+  ok(A.needsWaterQuestion(s), 'pregunta del transductor: aparece si una sonda no da profundidad');
+  ok(has(A.analyze(s, { term: '120', water: 'yes' }), 'fail', /no da profundidad con el transductor en el agua/), 'transductor en el agua sin profundidad = AVERÍA');
+  const rNo = A.analyze(s, { term: '120', water: 'no' });
+  ok(has(rNo, 'info', /fuera del agua/) && !has(rNo, 'warn', /profundidad/), 'transductor fuera del agua = solo informativo');
   const ghost = s.devices.find((d) => d.sa === 3);
   ok(ghost.claimsUnreq === 1, `reinicios del Ghost contados una vez (${ghost.claimsUnreq})`);
   const y = s.devices.find((d) => d.sa === 11);
@@ -62,6 +66,7 @@ console.log('\n[limpia]');
   ok(!has(r, null, /Consumo de red/), 'LEN "no disponible" no suma consumo');
   ok(!has(r, null, /incomplet/), 'trozos sueltos al empezar ≠ mensajes incompletos');
   ok(s.bus.fpErr === 0, `fpErr total 0 (${s.bus.fpErr})`);
+  ok(!A.needsWaterQuestion(s), 'sin pregunta del transductor si la sonda funciona');
 }
 
 // ---------- 3. Red grande y ruidosa ----------

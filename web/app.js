@@ -39,7 +39,10 @@
       render(s);
     } catch (e) {
       if (gen !== S.gen) return;
-      if (++S.failCount > 1) { $('#conn').className = 'pill off'; $('#conn').textContent = 'Sin conexión'; }
+      if (++S.failCount > 1) {
+        $('#conn').className = 'pill off'; $('#conn').textContent = 'Sin conexión';
+        setStatus('bad', 'Sin conexión con la herramienta', 'Comprueba que el iPhone sigue conectado a la Wi-Fi N2K-Diagnostico y que la herramienta tiene alimentación.');
+      }
     }
     if (gen === S.gen && S.pollMs && !document.hidden) S.timer = setTimeout(poll, S.pollMs);
   }
@@ -55,6 +58,24 @@
     else if (d.done && $('#home').classList.contains('active')) { S.finishing = true; stopPolling(); show('term'); }
   }
 
+  function setStatus(cls, t, d) {
+    $('#status').className = 'status ' + cls;
+    $('#stT').textContent = t; $('#stD').textContent = d;
+  }
+  // Estado de la conexión explicado en palabras sencillas (pantalla de inicio)
+  function homeStatus(s, nDev, er) {
+    const L = s.live || {}, b = s.bus || {}, v = L.v || {};
+    const hasV = v.now > 4;
+    if (!b.frames) {
+      if ((s.dur || 0) < 4000) return setStatus('wait', 'Escuchando la red…', 'Un momento, buscando equipos.');
+      if (!hasV) return setStatus('bad', 'No llega nada de la red', 'Comprueba que la herramienta está conectada a una T del backbone y que la red NMEA 2000 tiene alimentación (interruptor y fusible).');
+      return setStatus('warn', 'Hay tensión, pero no llegan datos', 'Enciende algún equipo de la red (pantalla, GPS…). Si ya están encendidos, haz el diagnóstico para buscar la causa.');
+    }
+    if (hasV && v.now < 10.5) return setStatus('warn', `Red detectada con tensión baja (${fmt(v.now, 1)} V)`, 'Puedes hacer el diagnóstico; el informe te dirá qué revisar.');
+    if (er > 3) return setStatus('warn', 'Red detectada con muchos errores', 'Haz el diagnóstico para ver la causa.');
+    return setStatus('ok', `Red detectada: ${nDev} equipo${nDev === 1 ? '' : 's'}`, 'Todo listo. Pulsa «Iniciar diagnóstico completo».');
+  }
+
   function render(s) {
     const L = s.live || {}, b = s.bus || {}, tw = L.twai || {}, d = L.diag || {};
     const v = L.v || {};
@@ -66,9 +87,11 @@
     $('#tVs').textContent = v.ok ? `mín ${fmt(v.min, 1)} · máx ${fmt(v.max, 1)}` : 'sin lectura';
     tile('#tLoad', fmt(b.loadNow, 0) + ' %', b.loadNow > 70 ? 'bad' : b.loadNow > 40 ? 'mid' : null);
     $('#tLoads').textContent = `pico ${fmt(b.loadPeak, 0)} %`;
-    tile('#tDev', String(devs.filter((x) => x.sa !== 254).length));
+    const nDev = devs.filter((x) => x.sa !== 254).length;
+    tile('#tDev', String(nDev));
     const busErr = tw.busErr || 0;
     const er = b.frames ? busErr / (b.frames + busErr) * 100 : 0;
+    homeStatus(s, nDev, er);
     tile('#tErr', String(busErr), er > 3 ? 'bad' : er > 0.3 ? 'mid' : b.frames ? 'good' : null);
     $('#tErrs').textContent = b.frames ? `${fmt(er, 2)} % · ${tw.state || '-'}` : `CAN ${tw.state || '-'}`;
     const list = $('#liveDevs');
@@ -135,10 +158,23 @@
     btns.forEach((x) => { x.disabled = false; });
     b.classList.remove('busy');
     if (!snap) { toast('No se pudieron leer los resultados. Comprueba la Wi-Fi y vuelve a tocar la respuesta.'); return; }
-    S.snap = snap;
-    S.result = N2K.analyze(snap, { term: b.dataset.v, ref: $('#ref').value.trim(), date: S.startedAt || new Date() });
-    renderResult(S.result); show('result');
+    S.snap = snap; S.term = b.dataset.v;
+    // solo se pregunta por el transductor si alguna sonda no da profundidad
+    if (N2K.needsWaterQuestion(snap)) show('water'); else finish();
   });
+  $$('#ansWater button').forEach((b) => b.onclick = () => finish(b.dataset.v));
+
+  function finish(water) {
+    S.result = N2K.analyze(S.snap, { term: S.term, water, ref: $('#ref').value.trim(), date: S.startedAt || new Date() });
+    renderResult(S.result); show('result');
+  }
+
+  $('#bCancel').onclick = async () => {
+    if (!confirm('¿Cancelar la prueba? Se perderán los datos recogidos.')) return;
+    stopPolling();
+    try { await api('/api/resume'); } catch (e) { /* se reintenta al sondear */ }
+    S.finishing = true; show('home'); startPolling(2000);
+  };
 
   $('#bNew').onclick = async () => {
     try { await api('/api/resume'); } catch (e) { /* se reintenta al sondear */ }

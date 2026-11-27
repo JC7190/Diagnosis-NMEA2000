@@ -103,6 +103,9 @@ class Core {
   uint64_t ownName = 0;
   bool claimLost = false;   // otro equipo con NAME prioritario reclamó nuestra dirección
   bool answerClaimRequest = false;
+  bool answerPiRequest = false;   // alguien pide nuestra información de producto (126996)
+  uint32_t nakPgn = 0;            // petición dirigida a nosotros de un PGN que no damos → NAK
+  uint8_t nakTo = 255;
   // Avisa al núcleo de que se ha enviado/visto una petición de address claim
   void noteClaimRequest(uint32_t now) { claimReqMs = now; claimReqSeen = true; }
   // Avisa de que nosotros reclamamos ownAddr (el dueño anterior puede defenderla)
