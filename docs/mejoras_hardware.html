@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mejoras de hardware · PoweryMax Nmea2000 Diagnostic</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 16mm 14mm; }
+  :root { --ink:#18181b; --mu:#5d5d66; --line:#dedee3; --red:#e1252d; --bg:#f5f5f7; }
+  * { box-sizing: border-box; }
+  body { font: 10pt/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif; color: var(--ink); margin: 0; }
+  header { background:#141416; color:#fff; padding:14px 18px 12px; border-bottom:3px solid var(--red); border-radius:6px 6px 0 0; }
+  header .t { font-size:9pt; letter-spacing:2.4px; text-transform:uppercase; color:#a0a0a8; }
+  header .t b { color: var(--red); }
+  header h1 { margin:4px 0 2px; font-size:18pt; }
+  header p { margin:0; color:#cfcfd4; font-size:9.5pt; }
+  h2 { font-size:13pt; margin:20px 0 6px; padding-bottom:3px; border-bottom:2px solid var(--red); display:inline-block; }
+  h3 { font-size:11pt; margin:14px 0 4px; }
+  p { margin:6px 0; }
+  .muted { color: var(--mu); }
+  table { width:100%; border-collapse:collapse; margin:8px 0 10px; font-size:9pt; page-break-inside:avoid; }
+  th { background:#141416; color:#fff; text-align:left; padding:5px 7px; font-weight:600; }
+  td { padding:5px 7px; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:nth-child(even) td { background:#fafafb; }
+  .box { background: var(--bg); border-left:3px solid var(--red); padding:8px 11px; margin:8px 0; border-radius:0 6px 6px 0; page-break-inside:avoid; }
+  .warn { border-left-color:#d68000; }
+  .tag { display:inline-block; font-size:8pt; font-weight:700; padding:1px 7px; border-radius:99px; color:#fff; background:var(--red); vertical-align:1px; }
+  .tag.g { background:#2e7d32; } .tag.a { background:#d68000; } .tag.n { background:#6b6b74; }
+  .sec { page-break-inside:avoid; }
+  .pb { page-break-before: always; }
+  svg { display:block; margin:6px auto; }
+  ol, ul { margin:4px 0 4px 18px; padding:0; } li { margin:2px 0; }
+  .small { font-size:8pt; color: var(--mu); }
+  code { font-family: Menlo, Consolas, monospace; font-size:8.5pt; background:#efeff2; padding:0 3px; border-radius:3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="t">Nmea2000 <b>Diagnostic</b></div>
+  <h1>Mejoras de hardware</h1>
+  <p>Qué añadir a la herramienta PoweryMax para resolver las limitaciones de la prueba · Noviembre 2026</p>
+</header>
+
+<h2>Resumen</h2>
+<p>Con el hardware actual (ESP32 + SN65HVD230 + divisor de tensión), la herramienta ve todo lo que viaja por el cable NMEA 2000, pero <b>no mide la salud eléctrica del cable</b>: niveles de CAN-H y CAN-L, malla, modo común ni terminadores. Para eso hay que añadir piezas. Todas las mejoras se montan <b>sin cambiar los pines actuales</b> (GPIO4, 5, 34 y 2 siguen igual).</p>
+
+<table>
+  <tr><th style="width:5%">#</th><th style="width:34%">Mejora</th><th>Qué resuelve</th><th style="width:12%">Coste</th><th style="width:13%">Prioridad</th></tr>
+  <tr><td>A</td><td><b>Medidor de niveles del bus</b> (conversor ADS1115)</td><td>Niveles de CAN-H y CAN-L, tensión diferencial, modo común y malla. Detecta terminadores que faltan o sobran <b>con la red encendida</b>.</td><td>15–20 €</td><td><span class="tag">Alta</span></td></tr>
+  <tr><td>B</td><td><b>Probador de terminadores</b> (2 conectores de panel)</td><td>Medir automáticamente los terminadores sueltos (macho y hembra): bien, roto, en corto o con valor incorrecto.</td><td>25–35 €</td><td><span class="tag a">Media</span></td></tr>
+  <tr><td>C</td><td><b>Transceptor CAN aislado</b></td><td>Aislamiento eléctrico entre la herramienta y la red, como exige la certificación NMEA 2000.</td><td>15–25 €</td><td><span class="tag n">Solo si se certifica</span></td></tr>
+</table>
+
+<div class="box"><b>Recomendación:</b> montar primero la <b>A</b>. Es la que más aporta: convierte la herramienta en un medidor eléctrico de la red, como los profesionales (Maretron N2KMeter, PEAK-MiniDiag). La <b>B</b> se puede añadir después en la misma caja. La <b>C</b> solo tiene sentido si se quiere certificar el producto, y complica la mejora A (ver apartado C).</div>
+
+<h2>Lo que se mejora solo con programación</h2>
+<p>Sin comprar nada, en la próxima versión del programa:</p>
+<ul>
+  <li><b>Rizado de tensión:</b> medir a ráfagas rápidas (cientos de lecturas por segundo) en vez de 20 por segundo. Detecta picos y caídas mucho más cortos.</li>
+  <li><b>Carga de red:</b> sumar también el tiempo que ocupan los errores en el cable.</li>
+  <li><b>Datos de motor, batería, GPS y sonda:</b> se verifican comparando la captura de la primera prueba real con lo que marca la pantalla del barco.</li>
+</ul>
+
+<div class="sec">
+<h2>A · Medidor de niveles del bus (ADS1115)</h2>
+<h3>Material</h3>
+<table>
+  <tr><th>Pieza</th><th style="width:10%">Cant.</th><th>Para qué</th></tr>
+  <tr><td>Módulo <b>ADS1115</b> (conversor de 16 bits, 4 canales, I²C, a 3,3 V)</td><td>1</td><td>Medir con precisión las tensiones del bus</td></tr>
+  <tr><td>Resistencias 100 kΩ 1 %</td><td>6</td><td>Divisores de entrada (una por señal + modo común)</td></tr>
+  <tr><td>Resistencias 47 kΩ 1 %</td><td>8</td><td>Desplazamiento de nivel a 1,65 V (2 por canal)</td></tr>
+  <tr><td>Diodos Schottky BAT54 (o 1N5819)</td><td>2</td><td>Detectores de pico (CAN-H máximo, CAN-L mínimo)</td></tr>
+  <tr><td>Condensadores 100 nF cerámicos</td><td>4</td><td>Memoria de los detectores de pico y filtros</td></tr>
+  <tr><td>Resistencias 1 MΩ</td><td>2</td><td>Descarga lenta de los detectores de pico</td></tr>
+  <tr><td>Condensador 1 µF</td><td>1</td><td>Filtro del modo común (promedio)</td></tr>
+  <tr><td>Placa perforada pequeña o Wago 221 + dupont</td><td>—</td><td>Montaje sin soldar en la medida de lo posible</td></tr>
+</table>
+
+<h3>Conexiones</h3>
+<table>
+  <tr><th>Desde</th><th>Hacia</th><th>Nota</th></tr>
+  <tr><td>ADS1115 VDD / GND</td><td>3V3 / GND del ESP32</td><td>Nunca a 5 V</td></tr>
+  <tr><td>ADS1115 SDA</td><td><b>GPIO21</b></td><td>Pin libre</td></tr>
+  <tr><td>ADS1115 SCL</td><td><b>GPIO22</b></td><td>Pin libre</td></tr>
+  <tr><td>ADS1115 ADDR</td><td>GND</td><td>Dirección 0x48</td></tr>
+  <tr><td>A0</td><td>CAN-H (blanco) → detector de máximo → divisor</td><td>Nivel dominante de CAN-H</td></tr>
+  <tr><td>A1</td><td>CAN-L (azul) → detector de mínimo → divisor</td><td>Nivel dominante de CAN-L</td></tr>
+  <tr><td>A2</td><td>CAN-H y CAN-L, cada uno con 100 kΩ a un punto común + 1 µF → divisor</td><td>Modo común (promedio); en reposo, nivel recesivo</td></tr>
+  <tr><td>A3</td><td>Malla (pin 1, gris) → divisor</td><td>Tensión de la malla</td></tr>
+</table>
+</div>
+
+<div class="sec">
+<h3>Divisor con desplazamiento (uno por canal)</h3>
+<p>El ADS1115 solo admite tensiones entre 0 y 3,3 V, pero las señales del bus pueden ir de −3 V a +10 V cuando hay averías. Cada entrada pasa por este divisor, que lleva cualquier valor entre <b>−5 V y +10,5 V</b> al rango 0,4–3,3 V:</p>
+<svg width="520" height="150" viewBox="0 0 520 150" font-family="Arial" font-size="11">
+  <text x="10" y="64">Señal</text><text x="10" y="78" fill="#5d5d66" font-size="9">(−5 a +10,5 V)</text>
+  <line x1="60" y1="70" x2="100" y2="70" stroke="#18181b" stroke-width="1.5"/>
+  <rect x="100" y="62" width="70" height="16" fill="#fff" stroke="#18181b" stroke-width="1.5"/><text x="113" y="74">100 kΩ</text>
+  <line x1="170" y1="70" x2="300" y2="70" stroke="#18181b" stroke-width="1.5"/>
+  <circle cx="260" cy="70" r="3" fill="#18181b"/>
+  <line x1="260" y1="70" x2="260" y2="40" stroke="#18181b" stroke-width="1.5"/>
+  <rect x="252" y="12" width="16" height="28" fill="#fff" stroke="#18181b" stroke-width="1.5"/><text x="274" y="30">47 kΩ</text>
+  <text x="250" y="9" fill="#e1252d" font-weight="bold">3,3 V</text>
+  <line x1="260" y1="70" x2="260" y2="98" stroke="#18181b" stroke-width="1.5"/>
+  <rect x="252" y="98" width="16" height="28" fill="#fff" stroke="#18181b" stroke-width="1.5"/><text x="274" y="116">47 kΩ</text>
+  <line x1="248" y1="138" x2="272" y2="138" stroke="#18181b" stroke-width="2"/><text x="250" y="150" font-size="9">GND</text>
+  <line x1="260" y1="126" x2="260" y2="138" stroke="#18181b" stroke-width="1.5"/>
+  <text x="305" y="74" font-weight="bold">→ entrada A0…A3 del ADS1115</text>
+  <text x="305" y="92" fill="#5d5d66" font-size="9.5">Vsalida = 1,65 V + 0,19 × (Vseñal − 1,65 V)</text>
+</svg>
+<p class="small">Ejemplos: −3 V → 0,77 V · 0 V → 1,33 V · 2,5 V → 1,81 V · +10 V → 3,24 V. La resistencia alta de entrada protege al conversor y no carga el bus.</p>
+</div>
+
+<div class="sec">
+<h3>Qué mediría y con qué umbrales</h3>
+<table>
+  <tr><th>Medida</th><th>Correcto</th><th>Aviso</th><th>Avería</th></tr>
+  <tr><td>Diferencial dominante (H − L)</td><td>1,45–2,75 V</td><td>1,2–1,45 o 2,75–3 V</td><td>&lt; 1,2 o &gt; 3 V</td></tr>
+  <tr><td>Diferencial recesivo (en reposo)</td><td>−0,18 a +0,08 V</td><td>—</td><td>fuera de rango</td></tr>
+  <tr><td>Modo común</td><td>−2,5 a +2,5 V</td><td>2,5–5,5 V (absoluto)</td><td>&gt; 5,5 V</td></tr>
+  <tr><td>Tensión de la malla</td><td>−2 a +0,3 V</td><td>−2,5 a −2 o +0,3 a +1 V</td><td>&lt; −2,5 o &gt; +1 V</td></tr>
+</table>
+<p class="small">Umbrales de PEAK-MiniDiag NMEA 2000 (Ap. E) y Maretron N2KMeter, los de la especificación técnica del proyecto.</p>
+<div class="box"><b>Bonus:</b> con la red encendida, un diferencial dominante <b>alto</b> indica que <b>falta un terminador</b> y uno <b>bajo</b> que <b>sobra alguno</b>. La herramienta podría avisarlo sin desmontar nada ni usar el polímetro.</div>
+<div class="box warn"><b>Precisión:</b> el ADS1115 no es lo bastante rápido para leer cada bit (4 µs). Los detectores de pico guardan el nivel máximo y el mínimo y el conversor los lee después. La precisión esperada es de unos ±0,15 V, suficiente para distinguir «correcto / aviso / avería», pero no para mediciones de laboratorio. Se calibra una vez con tu polímetro.</div>
+</div>
+
+<div class="sec pb">
+<h2>B · Probador de terminadores</h2>
+<p>Dos conectores de panel en la caja. El cliente quita los terminadores del barco, los enchufa y la app dice al momento si están bien.</p>
+<h3>Material</h3>
+<table>
+  <tr><th>Pieza</th><th style="width:10%">Cant.</th><th>Para qué</th></tr>
+  <tr><td>Conector Micro-C (M12 5 pines, código A) <b>hembra</b> de panel</td><td>1</td><td>Para terminadores macho</td></tr>
+  <tr><td>Conector Micro-C (M12 5 pines, código A) <b>macho</b> de panel</td><td>1</td><td>Para terminadores hembra</td></tr>
+  <tr><td>Resistencias 100 Ω 1 %</td><td>2</td><td>Referencia de medida (una por conector)</td></tr>
+  <tr><td>Resistencias 1 kΩ</td><td>3</td><td>Protección de las entradas</td></tr>
+  <tr><td>Condensadores 100 nF</td><td>3</td><td>Filtro de las lecturas</td></tr>
+</table>
+<h3>Conexiones (solo los pines 4 y 5 de cada conector)</h3>
+<table>
+  <tr><th>Desde</th><th>Hacia</th><th>Nota</th></tr>
+  <tr><td><b>GPIO25</b></td><td>Punto común de las dos resistencias de 100 Ω</td><td>Alimenta la medida solo durante 1 s</td></tr>
+  <tr><td>Punto común (1 kΩ)</td><td><b>GPIO39</b></td><td>Lee la tensión de referencia</td></tr>
+  <tr><td>100 Ω → pin 4 del conector hembra (1 kΩ)</td><td><b>GPIO32</b></td><td>Terminador macho</td></tr>
+  <tr><td>100 Ω → pin 4 del conector macho (1 kΩ)</td><td><b>GPIO33</b></td><td>Terminador hembra</td></tr>
+  <tr><td>Pin 5 de los dos conectores</td><td>GND</td><td>—</td></tr>
+</table>
+<p>La medida compara dos lecturas del mismo instante (referencia y terminador), así que no depende de la precisión del ESP32 (unos ±3 %). Resultado: <b>110–130 Ω correcto</b> · 50–70 Ω lleva dos resistencias dentro · muy alto: roto · casi 0: en cortocircuito (agua o corrosión) · otro valor: dañado.</p>
+<div class="box warn">Estos conectores van <b>separados de la red</b>: no se unen al cable NMEA 2000 de la herramienta. Si alguien enchufa por error un cable con tensión, la herramienta lo detecta y no se estropea (las resistencias de 1 kΩ protegen las entradas).</div>
+</div>
+
+<div class="sec">
+<h2>C · Transceptor CAN aislado (opcional)</h2>
+<p>Sustituye el SN65HVD230 por un módulo aislado (por ejemplo <b>ADM3053</b>, que incluye su propia alimentación aislada, o <b>ISO1050</b> + convertidor aislado B0505S). El ESP32 queda separado eléctricamente de la red, que es lo que exige la certificación NMEA 2000.</p>
+<div class="box warn"><b>Ojo:</b> si la herramienta queda aislada, las medidas de la mejora A (que se hacen respecto al negativo de la red) tendrían que montarse en el lado aislado, con su propio conversor. Combinar A y C es bastante más complejo. Para un aparato de taller, <b>A sin C</b> es la mejor opción.</div>
+</div>
+
+<div class="sec">
+<h2>Qué haría yo en el programa al montar cada mejora</h2>
+<table>
+  <tr><th style="width:8%">Mejora</th><th>Cambios en firmware y app</th></tr>
+  <tr><td>A</td><td>Lectura del ADS1115 cada 50 ms; nuevas comprobaciones (diferencial, modo común, malla) con los umbrales de arriba; aviso de terminadores con la red encendida; casilla nueva «Salud del cable» en el inicio; calibración guiada con el polímetro; las limitaciones de niveles CAN y malla desaparecen del PDF.</td></tr>
+  <tr><td>B</td><td>Botón «Medir terminadores» en la pantalla de terminadores; la pregunta del polímetro queda solo como opción para la medida del backbone completo; resultado de cada terminador en el PDF.</td></tr>
+  <tr><td>C</td><td>Ninguno: el transceptor aislado funciona igual para el programa.</td></tr>
+</table>
+</div>
+
+<h2>Antes de montar nada</h2>
+<ol>
+  <li>Quita la resistencia de 120 Ω (SMD «121») de la placa SN65HVD230, como ya está indicado.</li>
+  <li>Haz la primera prueba real con el hardware actual: confirma que la red se lee bien antes de añadir piezas.</li>
+  <li>Compra el material de la mejora elegida; te preparo el esquema detallado de montaje y la versión del programa.</li>
+</ol>
+<p class="small">Pines usados hoy: GPIO4 (CAN RX), GPIO5 (CAN TX), GPIO34 (tensión de red), GPIO2 (LED). Pines nuevos: GPIO21/22 (A), GPIO25/32/33/39 (B). Todos los nuevos son compatibles con la Wi-Fi (ADC1 o digitales). Precios orientativos de componentes sueltos, noviembre 2026.</p>
+
+</body>
+</html>
