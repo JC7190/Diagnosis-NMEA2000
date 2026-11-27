@@ -10,7 +10,7 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.9** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
+- Firmware **v1.10** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
 
