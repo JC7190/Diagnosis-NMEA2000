@@ -10,9 +10,15 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.7** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
+- Firmware **v1.8** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
+
+### Cambios de la v1.8 (primera prueba en el ESP32 real)
+- **Memoria**: con el búfer de captura de 40 KB solo quedaban ~50 KB libres y `twai_driver_install` fallaba (CAN en «error») y la web no respondía. Búfer reducido a 1024 tramas (≈20 KB; el iPhone lo pide cada 0,4 s). Con el iPhone conectado quedan ≈57 KB libres, estables (sin fugas). **No añadir más memoria fija sin medir `heap`.**
+- La tarea CAN cede siempre 1 ms por vuelta (`vTaskDelay(1)`): la web (loop, mismo núcleo, menos prioridad) nunca se queda sin turno.
+- Registro por USB (115200) cada 5 s: `[estado] web=… peticiones=… clientesWiFi=… heap=… can=… tramas=…`, y `[can] no arranca: …` con el código de error si falla el driver.
+- Probado en el ESP32 de Javi (sin red NMEA conectada): web carga en el iPhone, CAN en «error-pasivo» (normal sin bus).
 
 ### Cambios de la v1.7
 - **Decisión de Javi: se sigue usando CANboat** (más fabricantes y mensajes = mejor diagnóstico), aunque la especificación pedía tablas propias. Aviso de licencia en `licencias/` (LEEME.md, licencia de CANboat y texto Apache-2.0), en el README y en la página /update.
