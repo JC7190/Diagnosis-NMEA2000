@@ -4,21 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0b1622">
-<title>Diagnóstico NMEA 2000</title>
+<meta name="theme-color" content="#0a0a0b">
+<meta name="apple-mobile-web-app-title" content="PoweryMax N2K">
+<title>PoweryMax Nmea2000 Diagnostic</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="top">
-  <div class="brand"><svg viewBox="0 0 24 24" class="logo"><path d="M3 12h4l2-6 4 12 2-6h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <div><b>N2K</b> Diagnóstico</div></div>
+  <div class="brand"><!--LOGO-->
+    <span class="tag">Nmea2000 <b>Diagnostic</b></span></div>
   <span id="conn" class="pill off">Sin conexión</span>
 </header>
 
 <main>
   <!-- ===== Inicio / en directo ===== -->
   <section id="home" class="screen active">
-    <div id="status" class="status wait"><i></i><div><b id="stT">Buscando la herramienta…</b><small id="stD">Conéctate a la Wi-Fi N2K-Diagnostico.</small></div></div>
+    <div id="status" class="status wait"><i></i><div><b id="stT">Buscando la herramienta…</b><small id="stD">Conéctate a la Wi-Fi «PoweryMax Nmea2000 Diagnostic».</small></div></div>
     <h2 class="eyebrow">Red en directo</h2>
     <div class="tiles">
       <div class="tile"><span>Tensión</span><b id="tV">-</b><small id="tVs">&nbsp;</small></div>
@@ -29,7 +30,7 @@
     <h2 class="eyebrow">Equipos detectados</h2>
     <div id="liveDevs" class="list"><div class="empty">Esperando datos de la red…</div></div>
     <div class="spacer"></div>
-    <a class="fwlink" href="/update">Actualizar firmware · <span id="fwv">v-</span></a>
+    <a class="fwlink" href="/update">PoweryMax Nmea2000 Diagnostic · Actualizar firmware · <span id="fwv">v-</span></a>
     <div class="cta"><button class="btn primary big" id="bSetup">Iniciar diagnóstico completo</button></div>
   </section>
 

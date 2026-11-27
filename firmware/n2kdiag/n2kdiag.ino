@@ -1,7 +1,7 @@
 // =====================================================================
-//  Diagnóstico NMEA 2000 — ESP32 + transceptor CAN (SN65HVD230)
-//  Crea la Wi-Fi "N2K-Diagnostico" (clave nmea2000) y sirve la web en
-//  http://192.168.4.1  o  http://n2k.local
+//  PoweryMax Nmea2000 Diagnostic — ESP32 + transceptor CAN (SN65HVD230)
+//  Crea la Wi-Fi "PoweryMax Nmea2000 Diagnostic" (clave nmea2000) y sirve la web en
+//  http://192.168.4.1  o  http://powerymax.local
 // =====================================================================
 #include <Arduino.h>
 #include <WiFi.h>
@@ -14,13 +14,13 @@
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.3"
+#define FW_VERSION   "1.4"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
 #define LED_PIN      2
 static const float VDIV = (100.0f + 20.0f) / 20.0f;
-static const char* AP_SSID = "N2K-Diagnostico";
+static const char* AP_SSID = "PoweryMax Nmea2000 Diagnostic";
 static const char* AP_PASS = "nmea2000";
 
 // Prototipos (el entorno Arduino no los genera aquí)
@@ -130,7 +130,7 @@ void sendProductInfo() {
   pi[2] = 0xFF; pi[3] = 0xFF;                        // código de producto: sin asignar
   auto put = [&](int o, const char* t) { for (int i = 0; i < 32 && t[i]; i++) pi[o + i] = t[i]; };
   char serial[17]; snprintf(serial, sizeof(serial), "%06X", (unsigned)(core->ownName & 0x1FFFFF));
-  put(4, "N2K Diagnostico"); put(36, FW_VERSION); put(68, "ESP32"); put(100, serial);
+  put(4, "PoweryMax N2K Diag"); put(36, FW_VERSION); put(68, "ESP32"); put(100, serial);
   pi[132] = 0;   // nivel de certificación
   pi[133] = 3;   // consumo: 3 LEN (150 mA)
   static uint8_t seq = 0;
@@ -485,11 +485,12 @@ void setup() {
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASS);
   WiFi.setSleep(false);   // respuesta más rápida en el iPhone
-  MDNS.begin("n2k");
+  MDNS.begin("powerymax");
   MDNS.addService("http", "tcp", 80);
 
   server.on("/", []() { sendAsset(INDEX_HTML_GZ, sizeof(INDEX_HTML_GZ), "text/html; charset=utf-8", false); });
   server.on("/jspdf.js", []() { sendAsset(JSPDF_JS_GZ, sizeof(JSPDF_JS_GZ), "application/javascript", true); });
+  server.on("/brand.js", []() { sendAsset(BRAND_JS_GZ, sizeof(BRAND_JS_GZ), "application/javascript", true); });
   server.on("/autotable.js", []() { sendAsset(AUTOTABLE_JS_GZ, sizeof(AUTOTABLE_JS_GZ), "application/javascript", true); });
   server.on("/api/snapshot", handleSnapshot);
   server.on("/api/start", handleStart);
@@ -501,7 +502,7 @@ void setup() {
 
   // Tarea CAN en el núcleo 1 (el 0 es de la Wi-Fi) con más prioridad que la web
   xTaskCreatePinnedToCore(canTask, "can", 6144, nullptr, 5, nullptr, 1);
-  Serial.printf("N2K Diagnostico v%s listo. Wi-Fi %s  ->  http://%s\n", FW_VERSION, AP_SSID, WiFi.softAPIP().toString().c_str());
+  Serial.printf("PoweryMax Nmea2000 Diagnostic v%s listo. Wi-Fi %s  ->  http://%s\n", FW_VERSION, AP_SSID, WiFi.softAPIP().toString().c_str());
 }
 
 void loop() {

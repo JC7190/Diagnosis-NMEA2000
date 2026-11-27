@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b1622">
-<title>Actualizar firmware</title>
+<meta name="theme-color" content="#0a0a0b">
+<title>Actualizar firmware · PoweryMax</title>
 <style>
-:root{--bg:#0b1622;--card:#152a3e;--line:#24405b;--tx:#e9f0f6;--mu:#8ea4b8;--ac:#1fb8a8;--fail:#ef5350;--ok:#43c463}
+:root{--bg:#0a0a0b;--card:#18181b;--line:#2e2e33;--tx:#f4f4f5;--mu:#9b9ca3;--ac:#e1252d;--fail:#ff5a5f;--ok:#43c463}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:radial-gradient(120% 60% at 50% -10%,#173552 0%,var(--bg) 60%);color:var(--tx);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{margin:0;min-height:100vh;background:radial-gradient(120% 55% at 50% -12%,#2a2a2e 0%,var(--bg) 62%);color:var(--tx);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 main{max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 18px) 18px 30px}
-a.back{color:var(--ac);text-decoration:none}
+a.back{color:var(--mu);text-decoration:none}
 h1{font-size:26px;margin:16px 0 6px}
 .ver{color:var(--mu);margin:0 0 22px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
@@ -18,17 +18,19 @@ ol{margin:0;padding-left:20px;color:var(--mu)} li{margin:5px 0} b{color:var(--tx
 .pick{display:block;margin:18px 0 12px;padding:18px;border:2px dashed var(--line);border-radius:14px;text-align:center;color:var(--mu);cursor:pointer}
 .pick.has{border-color:var(--ac);color:var(--tx)}
 input{display:none}
-button{width:100%;border:0;border-radius:14px;padding:17px;font:600 17px -apple-system,sans-serif;background:linear-gradient(135deg,#1fb8a8,#14968a);color:#04201d}
+button{width:100%;border:0;border-radius:14px;padding:17px;font:600 17px -apple-system,sans-serif;background:linear-gradient(135deg,#ec2a33,#b3141c);color:#fff}
 button:disabled{filter:grayscale(1) brightness(.6)}
-.bar{height:10px;background:#1a3249;border-radius:99px;overflow:hidden;margin:18px 0 8px;display:none}
+.bar{height:10px;background:#26262b;border-radius:99px;overflow:hidden;margin:18px 0 8px;display:none}
 .bar i{display:block;height:100%;width:0;background:var(--ac);transition:width .2s}
 #msg{text-align:center;min-height:24px;font-weight:600}
 .warn{margin-top:18px;font-size:14px;color:var(--mu)}
+.brand{margin-top:18px;display:flex;flex-direction:column;gap:4px}.brand .plogo{height:20px;width:auto;color:#fff}.brand .tag{font-size:10px;letter-spacing:2.6px;text-transform:uppercase;color:var(--mu);font-weight:600}.brand .tag b{color:var(--ac)}
 </style>
 </head>
 <body>
 <main>
   <a class="back" href="/">‹ Volver</a>
+  <div class="brand"><!--LOGO--><span class="tag">Nmea2000 <b>Diagnostic</b></span></div>
   <h1>Actualizar firmware</h1>
   <p class="ver">Versión instalada: <b id="v">…</b><span id="mem"></span></p>
   <div class="card">
@@ -70,12 +72,12 @@ $('#go').onclick = async () => {
     if (x.status === 200) {
       $('#fill').style.width = '100%';
       msg('✓ Instalado. El aparato se está reiniciando…', 'var(--ok)');
-      // espera a que vuelva y abre la app (si el iPhone cambia de Wi-Fi, vuelve a conectarte a N2K-Diagnostico)
+      // espera a que vuelva y abre la app (si el iPhone cambia de Wi-Fi, vuelve a conectarte a la Wi-Fi PoweryMax)
       let n = 0;
       const tryBack = () => {
         fetch('/api/snapshot?lite=1', { cache: 'no-store' }).then((r) => r.json()).then((s) => {
           msg(`✓ Actualizado a la versión ${(s.live && s.live.fw) || ''}`, 'var(--ok)'); setTimeout(() => { location.href = '/'; }, 1500);
-        }).catch(() => { if (++n < 40) setTimeout(tryBack, 1500); else msg('✓ Instalado. Vuelve a conectarte a la Wi-Fi N2K-Diagnostico y abre http://192.168.4.1', 'var(--ok)'); });
+        }).catch(() => { if (++n < 40) setTimeout(tryBack, 1500); else msg('✓ Instalado. Vuelve a conectarte a la Wi-Fi «PoweryMax Nmea2000 Diagnostic» y abre http://192.168.4.1', 'var(--ok)'); });
       };
       setTimeout(tryBack, 5000);
     }

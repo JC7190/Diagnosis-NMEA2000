@@ -1,9 +1,9 @@
-# Diagnóstico NMEA 2000 (ESP32)
+# PoweryMax Nmea2000 Diagnostic (ESP32)
 
 Herramienta de taller que se conecta a una red NMEA 2000, la analiza y genera un informe PDF con lo que falla y qué hay que cambiar. Se maneja desde el iPhone (Safari) o desde cualquier ordenador, a través de la Wi-Fi que crea el propio aparato.
 
-- Wi-Fi: `N2K-Diagnostico` · clave `nmea2000`
-- Web: http://192.168.4.1 (o http://n2k.local)
+- Wi-Fi: `PoweryMax Nmea2000 Diagnostic` · clave `nmea2000`
+- Web: http://192.168.4.1 (o http://powerymax.local)
 
 ## Estructura
 | Carpeta | Contenido |

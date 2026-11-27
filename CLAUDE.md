@@ -1,4 +1,4 @@
-# N2K Diagnóstico — contexto para Claude Code
+# PoweryMax Nmea2000 Diagnostic — contexto para Claude Code
 
 Herramienta propia de Javi (técnico/encargado en una empresa de electrónica náutica: Lowrance, Simrad, MotorGuide, WaterSnake) para **escanear y diagnosticar redes NMEA 2000** (pantallas Lowrance, motores eléctricos Ghost/Recon, sondas, GPS, etc.) y generar un **informe PDF** que diga claramente qué falla y qué hay que cambiar.
 
@@ -10,9 +10,14 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.3** compilando con core esp32 3.3.13 (≈1,20 MB, 60 % de `min_spiffs`). **No se ha probado aún en hardware real.**
+- Firmware **v1.4** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Grabado y arrancando en el ESP32 de Javi (v1.3, por USB desde su Mac). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
+
+### Cambios de la v1.4 (marca PoweryMax)
+- Producto: **PoweryMax Nmea2000 Diagnostic**. Colores de marca: negro, gris y rojo (`--ac:#e1252d`); los colores de estado (verde/ámbar/rojo) no cambian.
+- Logo: `web/brand/PoweryMax_logo.svg` (original). `build_web.py` inserta `web/brand/logo_inline.svg` (coordenadas redondeadas, `currentColor`) donde pone `<!--LOGO-->` en index.html y update.html. `web/brand.js` lleva el logo en PNG para el PDF; se sirve en `/brand.js` y se carga junto con jsPDF.
+- Wi-Fi `PoweryMax Nmea2000 Diagnostic`, mDNS `powerymax.local`, nombre en la red NMEA 2000 (126996) `PoweryMax N2K Diag`. Los nombres de archivo (PDF y .bin) no cambian.
 
 ### Cambios de la v1.3
 - Inicio: aviso de estado en lenguaje sencillo (sin conexión / no llega nada / hay tensión pero no datos / red detectada).
@@ -94,7 +99,7 @@ test/
 ```
 
 ### Red y endpoints
-- Wi-Fi AP `N2K-Diagnostico` / clave `nmea2000`, IP `192.168.4.1`, mDNS `n2k.local`.
+- Wi-Fi AP `PoweryMax Nmea2000 Diagnostic` / clave `nmea2000`, IP `192.168.4.1`, mDNS `powerymax.local`.
 - `GET /` UI · `GET /jspdf.js`, `/autotable.js` · `GET /api/snapshot` (JSON completo + bloque `live`; `?lite=1` sin PGNs)
 - `GET /api/start?dur=<s>&mode=active|passive` · `GET /api/resume`
 - `GET /update` · `POST /api/update` (multipart, campo `firmware`)

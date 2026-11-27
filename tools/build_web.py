@@ -19,15 +19,18 @@ def slim(code):
         out.append(t)
     return '\n'.join(out)
 
-html = rd('index.html')
+logo = rd('brand/logo_inline.svg').strip()   # logo PoweryMax (blanco, color = currentColor)
+html = rd('index.html').replace('<!--LOGO-->', logo)
 html = html.replace('<link rel="stylesheet" href="style.css">', '<style>' + slim(rd('style.css')) + '</style>')
 def inline(m): return '<script>' + slim(rd(m.group(1))).replace('</script', '<\\/script') + '</script>'
 html = re.sub(r'<script src="((?:lookups|analyze|report|app)\.js)"></script>', inline, html)
 open(os.path.join(dist, 'index.html'), 'w', encoding='utf-8').write(html)
+open(os.path.join(dist, 'update.html'), 'w', encoding='utf-8').write(rd('update.html').replace('<!--LOGO-->', logo))
 
 assets = [
     ('INDEX_HTML_GZ', html.encode('utf-8')),
-    ('UPDATE_HTML_GZ', open(os.path.join(web, 'update.html'), 'rb').read()),
+    ('UPDATE_HTML_GZ', rd('update.html').replace('<!--LOGO-->', logo).encode('utf-8')),
+    ('BRAND_JS_GZ', open(os.path.join(web, 'brand.js'), 'rb').read()),
     ('JSPDF_JS_GZ', open(os.path.join(web, 'lib', 'jspdf.umd.min.js'), 'rb').read()),
     ('AUTOTABLE_JS_GZ', open(os.path.join(web, 'lib', 'jspdf.plugin.autotable.min.js'), 'rb').read()),
 ]

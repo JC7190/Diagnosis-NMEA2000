@@ -11,6 +11,8 @@ class H(http.server.BaseHTTPRequestHandler):
         p = self.path.split('?')[0]
         if p == '/': return self.send(open(os.path.join(ROOT, '../dist/index.html'), 'rb').read(), 'text/html; charset=utf-8')
         if p == '/jspdf.js': return self.send(open(os.path.join(ROOT, '../web/lib/jspdf.umd.min.js'), 'rb').read(), 'application/javascript')
+        if p == '/brand.js': return self.send(open(os.path.join(ROOT, '../web/brand.js'), 'rb').read(), 'application/javascript')
+        if p == '/update': return self.send(open(os.path.join(ROOT, '../dist/update.html'), 'rb').read(), 'text/html; charset=utf-8')
         if p == '/autotable.js': return self.send(open(os.path.join(ROOT, '../web/lib/jspdf.plugin.autotable.min.js'), 'rb').read(), 'application/javascript')
         if p == '/api/start':
             STATE['start'] = time.time(); STATE['mode'] = 'passive' if 'passive' in self.path else 'active'

@@ -41,7 +41,7 @@
       if (gen !== S.gen) return;
       if (++S.failCount > 1) {
         $('#conn').className = 'pill off'; $('#conn').textContent = 'Sin conexión';
-        setStatus('bad', 'Sin conexión con la herramienta', 'Comprueba que el iPhone sigue conectado a la Wi-Fi N2K-Diagnostico y que la herramienta tiene alimentación.');
+        setStatus('bad', 'Sin conexión con la herramienta', 'Comprueba que el iPhone sigue conectado a la Wi-Fi «PoweryMax Nmea2000 Diagnostic» y que la herramienta tiene alimentación.');
       }
     }
     if (gen === S.gen && S.pollMs && !document.hidden) S.timer = setTimeout(poll, S.pollMs);
@@ -143,7 +143,7 @@
       $('#ringPct').textContent = '0 %'; $('#ringLeft').innerHTML = '&nbsp;';
       $('#rDev').textContent = '0'; $('#rFr').textContent = '0'; $('#rErr').textContent = '0';
       show('running'); startPolling(1000);
-    } catch (e) { toast('No se pudo iniciar. ¿Estás conectado a la Wi-Fi N2K-Diagnostico?'); startPolling(2000); }
+    } catch (e) { toast('No se pudo iniciar. ¿Estás conectado a la Wi-Fi «PoweryMax Nmea2000 Diagnostic»?'); startPolling(2000); }
     btn.disabled = false;
   };
 
@@ -221,13 +221,13 @@
         const a = $('#pdfLink'); a.href = S.pdfUrl; a.download = name; a.hidden = false;
       } catch (e) { toast('Error al generar el PDF'); console.error(e); }
     };
-    if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return go();
+    if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable && window.BRAND) return go();
     // carga perezosa de las librerías del PDF (solo la primera vez)
     const load = (src) => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => { s.remove(); ko(); }; document.head.appendChild(s); });
     const btn = $('#bPdf'); btn.disabled = true;
     toast('Preparando el PDF…');
     const jspdf = window.jspdf ? Promise.resolve() : load('jspdf.js');
-    jspdf.then(() => (window.jspdf.jsPDF.API.autoTable ? null : load('autotable.js'))).then(go)
+    jspdf.then(() => (window.jspdf.jsPDF.API.autoTable ? null : load('autotable.js'))).then(() => (window.BRAND ? null : load('brand.js').catch(() => null))).then(go)
       .catch(() => toast('No se pudo cargar el generador de PDF. Vuelve a intentarlo.'))
       .finally(() => { btn.disabled = false; });
   };

@@ -1,7 +1,7 @@
 // Genera el informe PDF a partir del resultado de analyze()
 (function (root) {
   const C = {
-    navy: [15, 42, 68], teal: [0, 128, 128], text: [33, 37, 41], muted: [108, 117, 125], line: [222, 226, 230], bg: [246, 248, 250],
+    navy: [20, 20, 22], teal: [225, 37, 45], gray: [160, 160, 168], text: [33, 37, 41], muted: [108, 117, 125], line: [222, 226, 230], bg: [246, 248, 250],
     fail: [198, 40, 40], warn: [214, 128, 0], ok: [46, 125, 50], info: [69, 90, 100],
   };
   const SEV = { fail: 'AVERÍA', warn: 'REVISAR', ok: 'OK', info: 'INFO' };
@@ -28,22 +28,26 @@
     const dstr = date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
       date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     const ref = clean(r.ref);
-    doc.setProperties({ title: 'Informe de diagnóstico NMEA 2000' + (ref ? ' - ' + ref : ''), creator: 'Diagnóstico N2K' });
+    doc.setProperties({ title: 'PoweryMax Nmea2000 Diagnostic - Informe' + (ref ? ' - ' + ref : ''), creator: 'PoweryMax Nmea2000 Diagnostic' });
 
-    // ---- Cabecera ----
+    // ---- Cabecera (marca PoweryMax: negro con franja roja) ----
     doc.setFillColor(...C.navy); doc.rect(0, 0, W, 30, 'F');
-    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
-    doc.text('Informe de diagnóstico NMEA 2000', M, 14);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-    const sub = `${dstr}   ·   Duración ${Math.round(r.metrics.dur / 1000)} s   ·   Prueba ${r.metrics.mode === 'active' ? 'completa' : 'solo escucha'}`;
-    doc.text(sub, M, 22);
+    doc.setFillColor(...C.teal); doc.rect(0, 30, W, 1.2, 'F');
+    const B = root.BRAND || (typeof require !== 'undefined' ? (() => { try { return require('./brand.js'); } catch (e) { return null; } })() : null);
+    if (B && B.logoPng) doc.addImage(B.logoPng, 'PNG', M, 6.5, 52, 52 * B.logoH / B.logoW);
+    else { doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.text('PoweryMax', M, 15); }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+    doc.setTextColor(...C.gray); doc.text('NMEA2000', M, 22.5, { charSpace: 0.9 });
+    const tw0 = doc.getTextWidth('NMEA2000') + 8 * 0.9 + 2.2;
+    doc.setTextColor(...C.teal); doc.text('DIAGNOSTIC', M + tw0, 22.5, { charSpace: 0.9 });
+    doc.setTextColor(255, 255, 255); doc.setFontSize(14); doc.text('Informe de diagnóstico', W - M, 12, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(205, 205, 210);
+    doc.text(`${dstr}  ·  ${Math.round(r.metrics.dur / 1000)} s  ·  Prueba ${r.metrics.mode === 'active' ? 'completa' : 'solo escucha'}`, W - M, 18, { align: 'right' });
     if (ref) {
-      doc.setFont('helvetica', 'bold');
-      const room = CW - doc.setFont('helvetica', 'normal').getTextWidth(sub) - 8;
-      doc.setFont('helvetica', 'bold');
-      let t = ref; while (t.length > 3 && doc.getTextWidth(t) > room) t = t.slice(0, -2);
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+      let t = ref; while (t.length > 3 && doc.getTextWidth(t) > 105) t = t.slice(0, -2);
       if (t !== ref) t = t.replace(/\s+$/, '') + '…';
-      doc.text(t, W - M, 22, { align: 'right' });
+      doc.text(t, W - M, 23.5, { align: 'right' });
     }
 
     // ---- Veredicto ----
@@ -170,7 +174,7 @@
 
     // ---- Pie ----
     const n = doc.getNumberOfPages();
-    const foot = clean('Diagnóstico NMEA 2000' + (m.fw ? ' v' + m.fw : '') + ' · ' + dstr + (ref ? ' · ' + ref : ''));
+    const foot = clean('PoweryMax Nmea2000 Diagnostic' + (m.fw ? ' v' + m.fw : '') + ' · ' + dstr + (ref ? ' · ' + ref : ''));
     for (let i = 1; i <= n; i++) {
       doc.setPage(i);
       doc.setDrawColor(...C.line); doc.setLineWidth(0.2); doc.line(M, 286, W - M, 286);
