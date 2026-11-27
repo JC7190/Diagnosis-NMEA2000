@@ -10,9 +10,18 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.10** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
+- Firmware **v1.11** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
+
+### Cambios de la v1.11
+- **«Datos en tráfico»** sustituye a «tramas» en todo lo que ve el usuario (app, PDF, CSV).
+- **120 Ω**: «Solo se detecta un terminador» (falta, averiado o cable principal cortado) con pasos para encontrar el malo.
+- **Rizado medido a ráfagas**: una lectura del ADC por vuelta de la tarea CAN (≈300/s); cada 50 ms se guarda el pico a pico de la ventana sobre medias de 2 lecturas (`v.pp`). El análisis usa `v.pp` (o 2×`v.dev` en firmware antiguo).
+- **Carga de red con errores**: `loadAvg` del análisis suma `busErr × CFG.carga.bitsPorError` (80 bits, estimado).
+- **PDF**: fuentes de los umbrales como nota en letra de 6 pt al final; columnas de estado más anchas («NO MEDIDO» cabe).
+- **PDF en iPhone**: se descarga con un enlace `download` (sin salir de la app) a Archivos › Descargas; «Ver el PDF en otra pestaña» como alternativa. El resultado se guarda en `sessionStorage` (`pmx_resultado`, ligado al `t` del snapshot): al recargar o volver atrás se muestra el resultado, no la pregunta de terminadores.
+- Docs: `docs/Mejoras_hardware_PoweryMax.pdf` (ADS1115 para niveles del bus, probador de terminadores, transceptor aislado).
 
 ### Cambios de la v1.9
 - **Entrada de tensión al aire** (GPIO34 sin divisor o herramienta sin red): leía ruido 0–19 V y daba falsas averías (tensión peligrosa, baja, saltos). Ahora el firmware cuenta lecturas casi a 0 (`vLow`) y saltos >3 V entre lecturas seguidas (`vJump`); si superan el 5 % / 10 % marca `v.fl=1` y `v.ok=0`. El análisis lo da como «NO MEDIDO: lectura no fiable» y la app muestra «—  lectura no fiable».

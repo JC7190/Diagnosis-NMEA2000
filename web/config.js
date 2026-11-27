@@ -6,10 +6,10 @@ var CFG = {
     falloBajo: 9.0, avisoBajo: 10.0, falloAlto: 15.75, seguridad24V: 16.0,
     fuente: 'PEAK-MiniDiag NMEA 2000 Ap. E / Maretron N2KMeter; 9–16 V Garmin', etiqueta: 'verificado',
   },
-  rizado: {    // PHY-03 Rizado/transitorios pico a pico. La herramienta mide saltos cada 50 ms:
-    // p-p ≈ 2 × salto máximo respecto a la media del último segundo
+  rizado: {    // PHY-03 Rizado/transitorios pico a pico, medido a ráfagas (≈300 lecturas/s,
+    // pico a pico de cada ventana de 50 ms sobre medias de 2 lecturas)
     avisoPP: 2.0, falloPP: 5.0,
-    fuente: 'PEAK-MiniDiag Ap. E (umbral); método de medida propio', etiqueta: 'estimado',
+    fuente: 'PEAK-MiniDiag Ap. E (umbral); medida propia a ráfagas', etiqueta: 'estimado',
   },
   errores: {   // LNK-01 / LNK-02 Errores de bus
     avisoTotal: 1, falloPorSegundo: 15,
@@ -17,6 +17,7 @@ var CFG = {
   },
   carga: {     // LNK-04 Carga de bus (media de la prueba, régimen estable)
     aviso: 80, fallo: 90,
+    bitsPorError: 80,   // trama cortada (≈ media trama) + trama de error; estimado
     fuente: 'PEAK-MiniDiag Ap. E; Maretron N2KMeter §8', etiqueta: 'verificado',
   },
   fastPacket: { // TRN-01 Mensajes largos incompletos por equipo

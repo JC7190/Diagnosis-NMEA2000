@@ -42,6 +42,9 @@ const shot = (pg, name, full) => pg.screenshot({ path: path.join(OUT, name), ful
   const txt = require('fs').readFileSync(path.join(OUT, 'captura.csv'), 'utf8').split('\n');
   console.log('captura CSV:', csv.suggestedFilename(), (txt.length - 4) + ' tramas;', txt[2]);
 
+  // al recargar en el resultado, debe volver al resultado (no a la pregunta de terminadores)
+  await pg.reload(); await pg.waitForSelector('#result.active', { timeout: 6000 }); console.log('recarga en el resultado: OK');
+
   // búsqueda guiada por tramos (la red del simulador tiene errores)
   await pg.click('#bSplit'); await pg.waitForSelector('#split.active');
   await shot(pg, 'ui6_split.png');

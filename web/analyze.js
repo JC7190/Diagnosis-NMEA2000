@@ -160,7 +160,7 @@
     const others = devs.filter((d) => d.sa !== 254 && d.frames > 0).length;
     if (!bus.frames) {
       add('fail', 'Red', 'No se recibe ningún dato de la red',
-        'La herramienta no ve ninguna trama NMEA 2000 durante la prueba.',
+        'La herramienta no ve ningún dato en tráfico NMEA 2000 durante la prueba.',
         'Comprueba en este orden: 1) que la red tiene alimentación (cable de power con su fusible y el interruptor), 2) que hay dos terminadores, 3) que la herramienta está bien conectada a una T del backbone, 4) que no hay cables CAN-H/CAN-L (blanco/azul) cruzados en algún conector reparado.');
     }
 
@@ -168,7 +168,8 @@
     const TV = CFG.tension, RZ = CFG.rizado;
     if (v.ok) {
       // rizado/transitorios pico a pico estimados: 2 × salto máximo (firmware 1.2+)
-      const pp = v.dev !== undefined ? v.dev * 2 : null;
+      // pico a pico medido a ráfagas (firmware 1.11+); en versiones anteriores, 2 × salto máximo
+      const pp = v.pp !== undefined ? Math.max(v.pp, (v.dev || 0) * 2) : v.dev !== undefined ? v.dev * 2 : null;
       if (v.max > TV.seguridad24V) add('fail', 'Seguridad', `¡Tensión peligrosa en la red: ${fmt(v.max, 1)} V!`,
         'Más de 16 V en la red NMEA 2000: puede estar recibiendo 24 V o un cargador averiado. Los equipos pueden estropearse.',
         'Desconecta la alimentación de la red YA. Comprueba que la red NMEA 2000 no esté conectada a 24 V y revisa cargador y regulador.');
@@ -198,7 +199,7 @@
     // ---- 3. Terminadores (PHY-08, medida manual: prevalece sobre las estimaciones) ----
     const T = {
       '60': ['ok', 'Terminadores correctos (aprox. 60 ohm)', 'Medida del técnico con la red apagada.', ''],
-      '120': ['fail', 'Falta un terminador (aprox. 120 ohm)', 'Solo hay un terminador. Sin los dos, la señal rebota y aparecen errores y equipos que se caen.', 'Pon un terminador en cada extremo del backbone (dos en total, uno macho y otro hembra).'],
+      '120': ['fail', 'Solo se detecta un terminador (aprox. 120 ohm)', 'Falta un terminador, uno está averiado (roto por dentro) o el cable principal está cortado entre los dos. Sin los dos, la señal rebota y aparecen errores y equipos que se caen.', 'Con la red apagada: 1) quita los dos terminadores y mide cada uno entre sus pines 4 (blanco) y 5 (azul): el bueno da unos 120 ohm; el roto, infinito o un valor raro. Cámbialo. 2) Si los dos dan 120 ohm, el cable principal está cortado: mide en una T cerca de cada extremo; donde salga 120 en vez de 60, el corte está entre esa T y el terminador que no se ve. 3) Si falta, pon uno en cada extremo (uno macho y otro hembra).'],
       '40': ['fail', 'Sobran terminadores (40 ohm o menos)', 'Hay tres o más terminadores. Pasa a menudo con equipos que llevan terminador interno o con terminadores olvidados en una T.', 'Deja solo dos terminadores, uno en cada extremo del backbone. Revisa si algún equipo tiene terminación interna activada.'],
       'open': ['fail', 'Sin terminadores o backbone cortado (resistencia muy alta)', 'Entre CAN-H y CAN-L no hay continuidad: no hay terminadores o el cable del backbone está cortado.', 'Pon dos terminadores; si ya están, busca el tramo cortado midiendo por secciones.'],
       'short': ['fail', 'Cortocircuito entre CAN-H y CAN-L (menos de 10 ohm)', 'Las líneas de datos están en cortocircuito: la red no puede funcionar.', 'Desconecta equipos y cables uno a uno hasta que desaparezca el corto; suele ser un conector con agua o un cable pisado.'],
@@ -221,19 +222,21 @@
       `Con un solo equipo y la herramienta en «Solo escuchar», nadie confirma sus mensajes y aparecen ${busErr} errores. No es una avería.`,
       'Para probar un equipo suelto en el banco, usa la prueba «Completa»: la herramienta sí confirma sus mensajes.');
     else if (bus.frames && errPerSec > EC.falloPorSegundo) add('fail', 'Comunicación', `Muchos errores de comunicación (${fmt(errPerSec, 1)} por segundo)`,
-      `${busErr} errores en ${bus.frames} tramas (${fmt(errRate, 2)} %). Con este nivel los datos llegan mal o se pierden.`,
+      `${busErr} errores en ${bus.frames} datos en tráfico (${fmt(errRate, 2)} %). Con este nivel los datos llegan mal o se pierden.`,
       'Revisa los dos terminadores, conectores con humedad o corrosión, derivaciones de más de 6 m y cables con la malla dañada. Desconecta equipos uno a uno para ver cuál los provoca.');
     else if (bus.frames && (busErr >= EC.avisoTotal || (al.errPass > 0 && others > 0))) add('warn', 'Comunicación', `Errores de comunicación (${busErr} en la prueba)`,
-      `${busErr} errores en ${bus.frames} tramas (${fmt(errPerSec, 2)} por segundo)${al.errPass ? '; el controlador de la herramienta llegó a modo "error pasivo"' : ''}. Cualquier error es indeseable aunque la red funcione.`,
+      `${busErr} errores en ${bus.frames} datos en tráfico (${fmt(errPerSec, 2)} por segundo)${al.errPass ? '; el controlador de la herramienta llegó a modo "error pasivo"' : ''}. Cualquier error es indeseable aunque la red funcione.`,
       'Revisa terminadores y conectores (humedad, pines doblados). Si los errores aparecen al arrancar un motor, revisa masas y la separación del cableado de potencia. Para fallos intermitentes, repite la prueba de 5 minutos.');
     else if (bus.frames) add('ok', 'Comunicación', 'Comunicación limpia, sin errores', '', '');
-    if (lost > 0) add('info', 'Herramienta', 'La herramienta no pudo leer algunas tramas',
-      `${lost} tramas se perdieron dentro de la herramienta (no en la red). Algunos contadores pueden quedarse un poco cortos.`, '');
+    if (lost > 0) add('info', 'Herramienta', 'La herramienta no pudo leer algunos datos en tráfico',
+      `${lost} datos en tráfico se perdieron dentro de la herramienta (no en la red). Algunos contadores pueden quedarse un poco cortos.`, '');
 
     // ---- 5. Carga del bus (LNK-04, media de la prueba) ----
+    // los errores también ocupan el cable: cada uno ≈ trama cortada + trama de error (estimado)
     const CG = CFG.carga;
-    if (bus.loadAvg >= CG.fallo) add('fail', 'Red', `Red saturada (media ${fmt(bus.loadAvg, 0)} %)`, 'Con la red tan llena se retrasan y pierden mensajes.', 'Reduce la frecuencia de envío de algunos equipos o divide la red con un puente NMEA 2000.');
-    else if (bus.loadAvg >= CG.aviso || bus.loadPeak >= CG.fallo) add('warn', 'Red', `Carga de red alta (media ${fmt(bus.loadAvg, 0)} %, pico ${fmt(bus.loadPeak, 0)} %)`, 'Hay poco margen para añadir equipos.', 'Revisa si hay equipos enviando datos repetidos o innecesarios (rumbo o posición a 10 Hz o más).');
+    const loadAvg = (bus.loadAvg || 0) + (dur > 0 ? busErr * CG.bitsPorError * 100 / (250000 * dur / 1000) : 0);
+    if (loadAvg >= CG.fallo) add('fail', 'Red', `Red saturada (media ${fmt(loadAvg, 0)} %)`, 'Con la red tan llena se retrasan y pierden mensajes.', 'Reduce la frecuencia de envío de algunos equipos o divide la red con un puente NMEA 2000.');
+    else if (loadAvg >= CG.aviso || bus.loadPeak >= CG.fallo) add('warn', 'Red', `Carga de red alta (media ${fmt(loadAvg, 0)} %, pico ${fmt(bus.loadPeak, 0)} %)`, 'Hay poco margen para añadir equipos.', 'Revisa si hay equipos enviando datos repetidos o innecesarios (rumbo o posición a 10 Hz o más).');
 
     // ---- 5b. Tamaño de la red y mensajes fuera de NMEA 2000 (LNK-06) ----
     const nPhys = devs.filter((d) => d.sa !== 254).length;
@@ -312,9 +315,9 @@
         const total = d.fpErr + (d.fpOk || 0);
         const pct = total ? d.fpErr / total * 100 : 100;
         const det = `${d.fpErr === 1 ? 'Un mensaje largo llegó cortado' : d.fpErr + ' mensajes largos llegaron cortados'}${d.fpOk ? ` de ${total} (${fmt(pct, 1)} %)` : ''}.`;
-        if (lost > 0) add('info', 'Equipos', `Mensajes incompletos de ${label}`, det + ' La herramienta también perdió tramas, así que puede no ser culpa del equipo.', '', d.sa);
+        if (lost > 0) add('info', 'Equipos', `Mensajes incompletos de ${label}`, det + ' La herramienta también perdió datos en tráfico, así que puede no ser culpa del equipo.', '', d.sa);
         else if (d.fpErr >= CFG.fastPacket.minMensajes && pct > CFG.fastPacket.falloPct) add('fail', 'Equipos', `Muchos mensajes incompletos de ${label}`, det,
-          'Se pierden tramas: revisa su cable de derivación y el conector, los terminadores y los errores de la red. Si la red va muy cargada, reduce el tráfico.', d.sa);
+          'Se pierden datos en tráfico: revisa su cable de derivación y el conector, los terminadores y los errores de la red. Si la red va muy cargada, reduce el tráfico.', d.sa);
         else if (d.fpErr >= CFG.fastPacket.minMensajes && pct > CFG.fastPacket.avisoPct) add('warn', 'Equipos', `Mensajes incompletos de ${label}`, det,
           'Posible ruido o mal contacto en su derivación. Revisa el cable y el conector; si hay errores CAN, revisa también los terminadores.', d.sa);
         else add('info', 'Equipos', `Mensaje incompleto aislado de ${label}`, det + ' Un caso aislado no indica avería.', '', d.sa);
@@ -506,7 +509,7 @@
       verdict, nFail, nWarn, findings: F, actions, devices: devs.sort((a, b) => a.sa - b.sa), pgnRows,
       // búsqueda guiada por tramos: cuando hay errores de bus que no se pueden atribuir a un equipo
       offerSplit: !!(bus.frames && busErr > 0 && !benchAck),
-      metrics: { dur, frames: bus.frames, loadAvg: bus.loadAvg, loadPeak: bus.loadPeak, errRate, busErr, errPerSec,
+      metrics: { dur, frames: bus.frames, loadAvg, loadPeak: bus.loadPeak, errRate, busErr, errPerSec,
         v, nDev: devs.filter((d) => d.sa !== 254).length, lenTotal, mode: live.mode, term: manual.term || 'skip', fw: live.fw || '' },
       ref: manual.ref || '', date: manual.date || new Date(),
     };

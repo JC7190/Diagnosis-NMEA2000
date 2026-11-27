@@ -31,7 +31,7 @@
       const m = /#seq=(\d+);lost=(\d+)/.exec(t.slice(0, nl));
       if (!m) return 0;
       const lost = +m[2];
-      if (lost) { CAP.lost += lost; CAP.lines.push(`;;;;HUECO ${lost} tramas no descargadas`); }
+      if (lost) { CAP.lost += lost; CAP.lines.push(`;;;;HUECO ${lost} datos no descargados`); }
       const body = t.slice(nl + 1);
       let got = 0;
       if (body) { const ls = body.split('\n'); for (const l of ls) if (l) { CAP.lines.push(l); got++; } }
@@ -51,8 +51,8 @@
   }
   function capCsv(r) {
     const d = r.date instanceof Date ? r.date : new Date();
-    const head = [`# PoweryMax Nmea2000 Diagnostic v${r.metrics.fw || ''} - captura de tramas`,
-      `# fecha=${d.toISOString()};referencia=${(r.ref || '').replace(/[;\n]/g, ' ')};duracion_s=${Math.round(r.metrics.dur / 1000)};modo=${r.metrics.mode};tramas=${CAP.lines.length};no_descargadas=${CAP.lost}`,
+    const head = [`# PoweryMax Nmea2000 Diagnostic v${r.metrics.fw || ''} - captura de datos en tráfico`,
+      `# fecha=${d.toISOString()};referencia=${(r.ref || '').replace(/[;\n]/g, ' ')};duracion_s=${Math.round(r.metrics.dur / 1000)};modo=${r.metrics.mode};datos=${CAP.lines.length};no_descargadas=${CAP.lost}`,
       'marca_tiempo_us;id29_hex;dlc;datos_hex;flags'];
     return head.concat(CAP.lines).join('\n') + '\n';
   }
@@ -95,8 +95,33 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden && S.pollMs && !S.timer) poll(); });
 
   // Si se recarga la página a mitad de una prueba, se vuelve a la pantalla que toca
+  // El resultado se guarda en la sesión del navegador: si se vuelve atrás o se recarga
+  // la página, se muestra otra vez el resultado (no la pregunta de los terminadores)
+  const SAVE_KEY = 'pmx_resultado';
+  function saveResult(tNow) {
+    if (tNow !== undefined) S.savedT = tNow;   // tras medir tramos, el aparato tiene otra medida
+    try {
+      sessionStorage.setItem(SAVE_KEY, JSON.stringify({ t: S.savedT !== undefined ? S.savedT : S.snap && S.snap.t, snap: S.snap, term: S.term, water: S.water,
+        ref: $('#ref').value.trim(), startedAt: S.startedAt ? +S.startedAt : null, split: (S.result && S.result.split) || [] }));
+    } catch (e) { /* sin espacio o navegación privada: no pasa nada */ }
+  }
+  function loadResult(t) {
+    try { const x = JSON.parse(sessionStorage.getItem(SAVE_KEY) || 'null'); return x && x.t === t ? x : null; } catch (e) { return null; }
+  }
+  function clearResult() { try { sessionStorage.removeItem(SAVE_KEY); } catch (e) { /* nada */ } }
+
   function restore(s) {
     const d = (s.live || {}).diag || {};
+    const saved = d.done ? loadResult(s.t) : null;
+    if (saved && $('#home').classList.contains('active')) {
+      S.finishing = true; stopPolling();
+      S.snap = saved.snap; S.term = saved.term; S.water = saved.water; $('#ref').value = saved.ref || '';
+      S.startedAt = saved.startedAt ? new Date(saved.startedAt) : new Date();
+      S.result = N2K.analyze(S.snap, { term: S.term, water: S.water, ref: saved.ref, date: S.startedAt });
+      S.result.split = saved.split || [];
+      renderResult(S.result); show('result');
+      return;
+    }
     if (d.running) { S.finishing = false; S.startedAt = new Date(Date.now() - (d.elapsed || 0)); show('running'); S.pollMs = 1000; capStart(true); }
     else if (d.done && $('#home').classList.contains('active')) { S.finishing = true; stopPolling(); show('term'); }
   }
@@ -143,7 +168,7 @@
     $('#tErrs').textContent = b.frames ? `${fmt(er, 2)} % · ${tw.state || '-'}` : `CAN ${tw.state || '-'}`;
     const list = $('#liveDevs');
     let html;
-    if (!devs.length) html = `<div class="empty">${b.frames ? 'Recibiendo tramas…' : 'Esperando datos de la red…'}</div>`;
+    if (!devs.length) html = `<div class="empty">${b.frames ? 'Recibiendo datos en tráfico…' : 'Esperando datos de la red…'}</div>`;
     else html = devs.map((x) => {
       const nm = N2K.decodeName(x.name), pi = N2K.decodePI(x.pi);
       const typical = x.frames > 1 ? (x.last - x.first) / (x.frames - 1) : 0;
@@ -212,8 +237,9 @@
   $$('#ansWater button').forEach((b) => b.onclick = () => finish(b.dataset.v));
 
   function finish(water) {
+    S.water = water; S.savedT = undefined;
     S.result = N2K.analyze(S.snap, { term: S.term, water, ref: $('#ref').value.trim(), date: S.startedAt || new Date() });
-    renderResult(S.result); show('result');
+    renderResult(S.result); show('result'); saveResult();
   }
 
   $('#bCancel').onclick = async () => {
@@ -226,7 +252,7 @@
   $('#bNew').onclick = async () => {
     try { await api('/api/resume'); } catch (e) { /* se reintenta al sondear */ }
     if (S.pdfUrl) { URL.revokeObjectURL(S.pdfUrl); S.pdfUrl = null; }
-    $('#pdfLink').hidden = true; S.result = null; S.finishing = false; CAP.lines = [];
+    $('#pdfLink').hidden = true; S.result = null; S.finishing = false; CAP.lines = []; clearResult();
     show('home'); startPolling(2000);
   };
 
@@ -238,7 +264,7 @@
     $('#verdict').className = 'verdict ' + r.verdict;
     $('#verdict').innerHTML = `<h1>${V[0]}</h1><p>${V[1]}</p><span class="cnt">${r.nFail} avería${r.nFail === 1 ? '' : 's'} · ${r.nWarn} aviso${r.nWarn === 1 ? '' : 's'}</span>`;
     const m = r.metrics, v = m.v || {};
-    const TT = { '60': 'Correctos', '120': 'Falta uno', '40': 'Sobran', open: 'Abierto', short: 'Corto', jump: 'Inestable', skip: 'No medido' };
+    const TT = { '60': 'Correctos', '120': 'Solo uno', '40': 'Sobran', open: 'Abierto', short: 'Corto', jump: 'Inestable', skip: 'No medido' };
     $('#resTiles').innerHTML = [
       ['Equipos', m.nDev, ''], ['Tensión', v.ok ? `${fmt(v.min, 1)}–${fmt(v.max, 1)} V` : '—', v.ok ? `media ${fmt(v.avg, 1)} V` : 'no medida'],
       ['Errores CAN', fmt(m.errRate, 2) + ' %', `${m.busErr} errores`], ['Terminadores', TT[m.term], ''],
@@ -263,11 +289,14 @@
         const pad = (n) => String(n).padStart(2, '0');
         const ref = (r.ref || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40);
         const name = `Diagnostico_N2K_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${ref ? '_' + ref : ''}.pdf`;
-        doc.save(name);
-        // enlace de respaldo (en algunos iPhone la descarga directa no aparece)
+        // Se descarga sin salir de la app: en el iPhone queda en Archivos › Descargas,
+        // desde donde se puede compartir (WhatsApp, correo…)
         if (S.pdfUrl) URL.revokeObjectURL(S.pdfUrl);
-        S.pdfUrl = URL.createObjectURL(doc.output('blob'));
-        const a = $('#pdfLink'); a.href = S.pdfUrl; a.download = name; a.hidden = false;
+        S.pdfUrl = URL.createObjectURL(new Blob([doc.output('arraybuffer')], { type: 'application/pdf' }));
+        const dl = document.createElement('a'); dl.href = S.pdfUrl; dl.download = name; document.body.appendChild(dl); dl.click(); dl.remove();
+        toast('PDF guardado en Archivos › Descargas. Desde ahí puedes compartirlo.');
+        // ver el PDF en otra pestaña (la app sigue abierta en esta)
+        const a = $('#pdfLink'); a.href = S.pdfUrl; a.hidden = false;
       } catch (e) { toast('Error al generar el PDF'); console.error(e); }
     };
     if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable && window.BRAND) return go();
@@ -353,6 +382,8 @@
     else if (eps * SP.dur < 3) { res = 'mid'; title = 'Sin errores, pero no es seguro'; txt = 'Los errores eran muy poco frecuentes. Repite esta medida para confirmarlo antes de seguir.'; }
     else { res = 'good'; title = 'Sin errores en este tramo'; txt = 'El fallo estaba en lo que has quitado en este paso.'; }
     SP.steps.push({ n: SP.steps.length + 1, devs, err, frames: b.frames || 0, dur: SP.dur, res });
+    if (S.result) S.result.split = SP.steps;
+    saveResult(snap.t);
     const cls = { bad: 'bad', good: 'good', mid: 'mid', none: 'mid' }[res];
     $('#spRes').innerHTML = `<div class="spOut ${cls}"><b>${esc(title)}</b><p>${esc(txt)}</p><p>En este tramo: ${esc(devs.join(', ') || 'ningún equipo')}.</p></div>`;
     $('#spRun').hidden = true;
@@ -360,7 +391,7 @@
     // si la medida fue dudosa o sin datos, el siguiente paso repite el mismo tramo
     spHow(); spHist();
   }
-  function spClose() { if (SP.running) return; if (S.result) S.result.split = SP.steps; show('result'); }
+  function spClose() { if (SP.running) return; if (S.result) S.result.split = SP.steps; saveResult(); show('result'); }
   $('#bSplit').onclick = spOpen;
   $('#bSplitGo').onclick = spMeasure;
   $('#bSplitEnd').onclick = spClose;
@@ -368,7 +399,7 @@
 
   $('#bCsv').onclick = (ev) => {
     ev.preventDefault();
-    const r = S.result; if (!r || !CAP.lines.length) return toast('No hay tramas capturadas en esta prueba.');
+    const r = S.result; if (!r || !CAP.lines.length) return toast('No hay datos en tráfico capturados en esta prueba.');
     const d = r.date instanceof Date ? r.date : new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const name = `Captura_N2K_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;

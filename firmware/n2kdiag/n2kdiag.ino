@@ -15,7 +15,7 @@
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.10"
+#define FW_VERSION   "1.11"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
@@ -80,7 +80,7 @@ static const uint32_t REQ_PGN[3] = { 60928, 126996, 126998 };
 uint32_t reqLastMs = 0;
 
 // Tensión (protegida por el mutex)
-float vNow = 0, vMin = 99, vMax = 0, vEma = 0, vDev = 0, vPrev = -1; double vSum = 0; uint32_t vN = 0;
+float vNow = 0, vMin = 99, vMax = 0, vEma = 0, vDev = 0, vPrev = -1, vPP = 0; double vSum = 0; uint32_t vN = 0;
 // Entrada al aire (divisor sin conectar): lecturas al azar. Se detecta por lecturas casi a 0
 // mezcladas con otras altas, o por saltos imposibles entre lecturas seguidas.
 uint32_t vTot = 0, vLow = 0, vJump = 0;
@@ -240,7 +240,7 @@ int64_t capT0 = 0;
 static void resetCounters(uint32_t now) {
   capSeq = 0; capT0 = esp_timer_get_time();
   core->reset(now);
-  vMin = 99; vMax = 0; vSum = 0; vN = 0; vDev = 0; vPrev = -1; vTot = 0; vLow = 0; vJump = 0;
+  vMin = 99; vMax = 0; vSum = 0; vN = 0; vDev = 0; vPP = 0; vPrev = -1; vTot = 0; vLow = 0; vJump = 0;
   alBusOff = alErrPass = alRecovered = 0;
   if (canRunning) twai_get_status_info(&twBase);
   twNow = twBase;
@@ -355,13 +355,23 @@ void canTask(void*) {
     // 4) Comandos de la web
     applyCommand(now);
 
-    // 5) Tensión cada 50 ms (media de 8 lecturas calibradas)
-    if (now - lastV >= 50 && !frozen) {
+    // 5) Tensión: una lectura en cada vuelta (≈300 por segundo). Cada 50 ms se guarda la
+    //    media y el pico a pico de la ventana (rizado/transitorios cortos). Para no confundir
+    //    el ruido del ADC con rizado, el pico a pico se calcula sobre medias de 2 lecturas.
+    static uint32_t wSum = 0, wN = 0; static int wPrev = -1, wMin = 1 << 30, wMax = -1;
+    if (!frozen) {
+      int mvs = analogReadMilliVolts(VSENSE_PIN);
+      wSum += mvs; wN++;
+      if (wPrev >= 0) { int pair = (mvs + wPrev) / 2; if (pair < wMin) wMin = pair; if (pair > wMax) wMax = pair; }
+      wPrev = mvs;
+    }
+    if (now - lastV >= 50 && !frozen && wN > 0) {
       lastV = now;
-      uint32_t mv = 0;
-      for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(VSENSE_PIN);
-      float v = (mv / 8) * VDIV / 1000.0f;
+      float v = (float)wSum / wN * VDIV / 1000.0f;
+      float wpp = wMax >= 0 ? (wMax - wMin) * VDIV / 1000.0f : 0;
+      wSum = 0; wN = 0; wPrev = -1; wMin = 1 << 30; wMax = -1;
       xSemaphoreTake(mtx, portMAX_DELAY);
+      if (v > 4.0f && vN >= 20 && wpp > vPP) vPP = wpp;
       vNow = v;
       vTot++;
       if (v <= 4.0f) vLow++;
@@ -419,12 +429,12 @@ void handleSnapshot() {
   snprintf(live, sizeof(live),
     "\"live\":{\"fw\":\"" FW_VERSION "\",\"mode\":\"%s\",\"frozen\":%d,\"up\":%u,"
     "\"diag\":{\"running\":%d,\"elapsed\":%u,\"duration\":%u,\"done\":%d},"
-    "\"v\":{\"now\":%.2f,\"min\":%.2f,\"max\":%.2f,\"avg\":%.2f,\"dev\":%.2f,\"ok\":%d,\"n\":%u,\"fl\":%d},"
+    "\"v\":{\"now\":%.2f,\"min\":%.2f,\"max\":%.2f,\"avg\":%.2f,\"dev\":%.2f,\"pp\":%.2f,\"ok\":%d,\"n\":%u,\"fl\":%d},"
     "\"twai\":{\"state\":\"%s\",\"tec\":%u,\"rec\":%u,\"busErr\":%u,\"missed\":%u,\"overrun\":%u,\"arbLost\":%u,\"txFailed\":%u},"
     "\"alerts\":{\"busOff\":%u,\"errPass\":%u,\"recovered\":%u},\"ownTx\":%u,\"ownTxFail\":%u,\"heap\":%u}",
     activeMode ? "active" : "passive", frozen ? 1 : 0, (unsigned)(now / 1000),
     diagRunning ? 1 : 0, (unsigned)el, (unsigned)diagDur, done ? 1 : 0,
-    vNow, vok ? vMin : 0, vok ? vMax : 0, vok ? (float)(vSum / vN) : 0, vok ? vDev : 0, vok ? 1 : 0, (unsigned)vN, vfloat ? 1 : 0,
+    vNow, vok ? vMin : 0, vok ? vMax : 0, vok ? (float)(vSum / vN) : 0, vok ? vDev : 0, vok ? vPP : 0, vok ? 1 : 0, (unsigned)vN, vfloat ? 1 : 0,
     twState, (unsigned)st.tx_error_counter, (unsigned)st.rx_error_counter,
     (unsigned)(st.bus_error_count - twBase.bus_error_count), (unsigned)(st.rx_missed_count - twBase.rx_missed_count),
     (unsigned)(st.rx_overrun_count - twBase.rx_overrun_count), (unsigned)(st.arb_lost_count - twBase.arb_lost_count),

@@ -66,7 +66,7 @@
     <p class="phase" id="phase">Escuchando la red…</p>
     <div class="tiles three">
       <div class="tile"><span>Equipos</span><b id="rDev">0</b></div>
-      <div class="tile"><span>Tramas</span><b id="rFr">0</b></div>
+      <div class="tile"><span>Datos en tráfico</span><b id="rFr">0</b></div>
       <div class="tile"><span>Errores</span><b id="rErr">0</b></div>
     </div>
     <p class="hint center">No desconectes la herramienta ni cierres esta página.<br>Si buscas un fallo intermitente, mueve ahora cables y conectores o arranca el motor.</p>
@@ -98,7 +98,7 @@
     <p class="q">¿Qué valor marca el polímetro?</p>
     <div class="answers" id="ansTerm">
       <button data-v="60"><b>Unos 60 Ω</b><small>Lo correcto</small></button>
-      <button data-v="120"><b>Unos 120 Ω</b><small>Falta un terminador</small></button>
+      <button data-v="120"><b>Unos 120 Ω</b><small>Falta uno o está averiado</small></button>
       <button data-v="40"><b>40 Ω o menos</b><small>Sobra alguno</small></button>
       <button data-v="short"><b>Casi 0 Ω</b><small>Menos de 10 Ω</small></button>
       <button data-v="open"><b>Muy alto o infinito</b><small>Sin terminadores o cable cortado</small></button>
@@ -151,8 +151,8 @@
       <button class="btn ghost" id="bNew">Nueva prueba</button>
       <button class="btn primary" id="bPdf">Descargar PDF</button>
     </div>
-    <a id="pdfLink" class="pdflink" target="_blank" hidden>Abrir el PDF</a>
-    <a id="bCsv" class="pdflink csv" href="#">Descargar captura de tramas (CSV)</a>
+    <a id="pdfLink" class="pdflink" target="_blank" rel="noopener" hidden>Ver el PDF en otra pestaña</a>
+    <a id="bCsv" class="pdflink csv" href="#">Descargar captura de datos en tráfico (CSV)</a>
   </section>
 </main>
 <div id="toast" class="toast"></div>

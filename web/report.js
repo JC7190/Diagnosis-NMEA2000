@@ -10,7 +10,7 @@
     warn: ['REVISAR', 'La red funciona, pero hay puntos que conviene corregir.'],
     ok: ['RED CORRECTA', 'No se ha encontrado ningún problema en la red.'],
   };
-  const TERM = { '60': ['Correctos', '60 ohm'], '120': ['Falta uno', '120 ohm'], '40': ['Sobran', '40 ohm o menos'], open: ['Abierto', 'resistencia muy alta'], short: ['Cortocircuito', 'menos de 10 ohm'], jump: ['Inestable', 'la lectura salta'], skip: ['No medido', ''] };
+  const TERM = { '60': ['Correctos', '60 ohm'], '120': ['Solo uno', '120 ohm'], '40': ['Sobran', '40 ohm o menos'], open: ['Abierto', 'resistencia muy alta'], short: ['Cortocircuito', 'menos de 10 ohm'], jump: ['Inestable', 'la lectura salta'], skip: ['No medido', ''] };
 
   // La fuente estándar del PDF solo tiene los caracteres de Windows-1252: lo demás
   // (flechas, símbolos, textos raros que mandan algunos equipos) se sustituye.
@@ -72,7 +72,7 @@
       ['Equipos', String(m.nDev), ''],
       ['Tensión de red', v.ok ? `${fmt(v.min, 1)} - ${fmt(v.max, 1)} V` : 'No medida', v.ok ? `media ${fmt(v.avg, 1)} V` : ''],
       ['Carga de red', `${fmt(m.loadAvg, 0)} %`, `pico ${fmt(m.loadPeak, 0)} %`],
-      ['Errores CAN', `${fmt(m.errRate, 2)} %`, `${m.busErr} en ${m.frames || 0} tramas`],
+      ['Errores CAN', `${fmt(m.errRate, 2)} %`, `${m.busErr} en ${m.frames || 0} datos`],
       ['Terminadores', (TERM[m.term] || ['-'])[0], (TERM[m.term] || ['', ''])[1]],
     ];
     const tw = (CW - 4 * 3) / 5;
@@ -148,7 +148,7 @@
       head: [['Estado', 'Resultado', 'Detalle']],
       body,
       alternateRowStyles: {},
-      columnStyles: { 0: { cellWidth: 21 }, 1: { cellWidth: 66, fontStyle: 'bold' } },
+      columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 64, fontStyle: 'bold' } },
       didParseCell: (d) => sevCell(d, 0),
     }));
     y = doc.lastAutoTable.finalY + 10;
@@ -164,7 +164,7 @@
         head: [['Dir.', 'Equipo', 'Fabricante', 'Tipo', 'Software', 'Nº de serie', 'Estado']],
         body: r.devices.map((d) => [String(d.sa), clean(d.pi && d.pi.model ? d.pi.model : d.label), clean(d.mfrName), clean(d.typeName),
           clean(d.pi && d.pi.sw ? d.pi.sw : '-'), clean(d.pi && d.pi.serial ? d.pi.serial : '-'), { content: '', sev: d.sev }]),
-        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { fontStyle: 'bold' }, 6: { cellWidth: 19 } },
+        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { fontStyle: 'bold' }, 6: { cellWidth: 23 } },
         didParseCell: (d) => sevCell(d, 6),
       }));
       y = doc.lastAutoTable.finalY + 4;
@@ -198,8 +198,8 @@
     lims.push(m.term && m.term !== 'skip' ? 'Terminadores: medida hecha por el técnico con el polímetro y la red apagada.'
       : 'Terminadores: no se midieron (la herramienta no puede medirlos con la red encendida).');
     lims.push('Niveles eléctricos del bus CAN (diferencial, modo común) y tensión de la malla: no medidos; la herramienta no tiene ese hardware.');
-    lims.push('Rizado de la tensión: estimado a partir de lecturas cada 50 ms; los picos muy rápidos no se ven.');
-    lims.push('Carga de la red: estimada contando tramas; las tramas con error no se cuentan.');
+    lims.push('Rizado de la tensión: medido a ráfagas (unas 300 lecturas por segundo); los picos de menos de unos milisegundos no se ven.');
+    lims.push('Carga de la red: estimada a partir de los datos en tráfico y de los errores (el tiempo de cada error es aproximado).');
     if (m.mode !== 'active') lims.push('Prueba en «Solo escuchar»: no se pidió a los equipos su modelo, software ni número de serie.');
     lims.push('Datos de motor, batería, GPS y sonda: interpretación propia de los mensajes, no la norma oficial NMEA 2000.');
     if (r.findings.some((f) => f.area === 'Herramienta')) lims.push('Ver también los avisos del apartado «Herramienta» en el resultado por áreas.');
@@ -226,21 +226,18 @@
       }));
     }
 
-    // ---- Fuentes de los umbrales ----
+    // ---- Fuentes de los umbrales: nota en letra muy pequeña al final ----
     const CF = root.CFG || (typeof require !== 'undefined' ? (() => { try { return require('./config.js'); } catch (e) { return null; } })() : null);
     if (CF) {
-      y = (r.pgnRows.length ? doc.lastAutoTable.finalY : y) + 10;
-      if (y + 30 > BOTTOM) { doc.addPage(); y = 18; }
-      section('Fuentes de los umbrales', 30);
-      const NAMES = { tension: 'Tensión de red', rizado: 'Rizado', errores: 'Errores de bus', carga: 'Carga de red', fastPacket: 'Mensajes incompletos',
-        consumo: 'Consumo (LEN)', nodos: 'Número de equipos', terminacion: 'Terminadores' };
-      doc.autoTable(Object.assign({}, tableBase, {
-        startY: y,
-        head: [['Comprobación', 'Fuente', 'Grado']],
-        body: Object.keys(NAMES).filter((k) => CF[k]).map((k) => [NAMES[k], clean(CF[k].fuente), clean(CF[k].etiqueta)]),
-        styles: Object.assign({}, tableBase.styles, { fontSize: 7.5, cellPadding: 1.5 }),
-        columnStyles: { 0: { cellWidth: 38, fontStyle: 'bold' }, 2: { cellWidth: 20 } },
-      }));
+      y = (r.pgnRows.length ? doc.lastAutoTable.finalY : y) + 8;
+      const NAMES = { tension: 'Tensión', rizado: 'Rizado', errores: 'Errores de bus', carga: 'Carga de red', fastPacket: 'Mensajes incompletos',
+        consumo: 'Consumo', nodos: 'Nº de equipos', terminacion: 'Terminadores' };
+      const txt = 'Fuentes de los umbrales: ' + Object.keys(NAMES).filter((k) => CF[k])
+        .map((k) => `${NAMES[k]}: ${CF[k].fuente} (${CF[k].etiqueta})`).join(' · ') + '.';
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(150, 150, 156);
+      const ls = doc.splitTextToSize(clean(txt), CW);
+      if (y + ls.length * 2.6 > BOTTOM) { doc.addPage(); y = 18; }
+      doc.text(ls, M, y);
     }
 
     // ---- Pie ----

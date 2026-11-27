@@ -26,7 +26,7 @@ console.log('\n[averias]');
   const r = A.analyze(s, { term: '120' });
   console.log('   ' + list(r).join('\n   '));
   ok(r.verdict === 'fail', 'veredicto AVERÍA');
-  ok(has(r, 'fail', /Falta un terminador/), 'terminador ausente');
+  ok(has(r, 'fail', /Solo se detecta un terminador/), 'terminador ausente');
   ok(has(r, 'fail', /no consigue dirección/), 'equipo en dirección 254');
   ok(has(r, 'fail', /Conflicto de dirección \(dir\. 40\)/), 'conflicto real de dirección (40)');
   ok(has(r, 'fail', /Instancia de motor duplicada/), 'instancia de motor duplicada');
