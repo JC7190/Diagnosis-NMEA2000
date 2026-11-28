@@ -10,6 +10,8 @@
 #include <Update.h>
 #include "esp_ota_ops.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
+#include "esp_wifi_ap_get_sta_list.h"
 #include "driver/twai.h"
 #include "n2k_core.h"
 #include "web_assets.h"
@@ -608,6 +610,11 @@ void setup() {
   server.on("/update", []() { sendAsset(UPDATE_HTML_GZ, sizeof(UPDATE_HTML_GZ), "text/html; charset=utf-8", false); });
   server.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
   server.onNotFound([]() { server.sendHeader("Location", "http://192.168.4.1/"); server.send(302, "text/plain", ""); });
+  // registro por USB de cada petición (diagnóstico de la propia herramienta)
+  server.addMiddleware([](WebServer &sv, Middleware::Callback next) {
+    Serial.printf("[web] pide %s\n", sv.uri().c_str());
+    return next();
+  });
   server.begin();
 
   // Tarea CAN en el núcleo 1 (el 0 es de la Wi-Fi) con más prioridad que la web
@@ -625,6 +632,10 @@ void loop() {
     Serial.printf("[estado] web=%u vueltas/5s peticiones=%u clientesWiFi=%d heap=%u can=%s tramas=%u\n",
       (unsigned)loops, (unsigned)httpReqs, WiFi.softAPgetStationNum(), (unsigned)ESP.getFreeHeap(), twState, (unsigned)core->bus.frames);
     loops = 0;
+    // dirección que el aparato ha dado a cada móvil conectado
+    wifi_sta_list_t sl; wifi_sta_mac_ip_list_t il;
+    if (esp_wifi_ap_get_sta_list(&sl) == ESP_OK && esp_wifi_ap_get_sta_list_with_ip(&sl, &il) == ESP_OK)
+      for (int i = 0; i < il.num; i++) Serial.printf("[wifi] cliente %d ip=" IPSTR "\n", i, IP2STR(&il.sta[i].ip));
   }
   if (!otaValidated && millis() > 30000) {   // lleva 30 s funcionando: este firmware es bueno
     esp_ota_mark_app_valid_cancel_rollback();
