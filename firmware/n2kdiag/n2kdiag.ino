@@ -15,7 +15,7 @@
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.12"
+#define FW_VERSION   "1.13"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
@@ -39,7 +39,7 @@ void handleSnapshot();
 void handleStart();
 void handleResume();
 void handleFrames();
-void sendAsset(const uint8_t* data, size_t len, const char* type, bool cache);
+void sendAsset(const uint8_t* data, size_t len, const char* type, bool cache, bool gz = true);
 void handleUpdateUpload();
 void handleUpdateDone();
 
@@ -503,9 +503,9 @@ void handleResume() {
   server.send(200, "application/json", "{\"ok\":1}");
 }
 
-void sendAsset(const uint8_t* data, size_t len, const char* type, bool cache) {
+void sendAsset(const uint8_t* data, size_t len, const char* type, bool cache, bool gz) {
   httpReqs++;
-  server.sendHeader("Content-Encoding", "gzip");
+  if (gz) server.sendHeader("Content-Encoding", "gzip");
   server.sendHeader("Cache-Control", cache ? "max-age=604800, immutable" : "no-cache");
   // Envío por trozos de 2 KB con reintentos: un archivo grande (jsPDF, 132 KB) enviado de
   // golpe se cortaba si la Wi-Fi del iPhone se atascaba un momento.
@@ -594,10 +594,10 @@ void setup() {
 
   server.on("/", []() { sendAsset(INDEX_HTML_GZ, sizeof(INDEX_HTML_GZ), "text/html; charset=utf-8", false); });
   server.on("/jspdf.js", []() { sendAsset(JSPDF_JS_GZ, sizeof(JSPDF_JS_GZ), "application/javascript", true); });
-  server.on("/apple-touch-icon.png", []() { sendAsset(ICON180_PNG_GZ, sizeof(ICON180_PNG_GZ), "image/png", true); });
-  server.on("/apple-touch-icon-precomposed.png", []() { sendAsset(ICON180_PNG_GZ, sizeof(ICON180_PNG_GZ), "image/png", true); });
-  server.on("/icon-192.png", []() { sendAsset(ICON192_PNG_GZ, sizeof(ICON192_PNG_GZ), "image/png", true); });
-  server.on("/icon-512.png", []() { sendAsset(ICON512_PNG_GZ, sizeof(ICON512_PNG_GZ), "image/png", true); });
+  server.on("/apple-touch-icon.png", []() { sendAsset(ICON180_PNG_RAW, sizeof(ICON180_PNG_RAW), "image/png", true, false); });
+  server.on("/apple-touch-icon-precomposed.png", []() { sendAsset(ICON180_PNG_RAW, sizeof(ICON180_PNG_RAW), "image/png", true, false); });
+  server.on("/icon-192.png", []() { sendAsset(ICON192_PNG_RAW, sizeof(ICON192_PNG_RAW), "image/png", true, false); });
+  server.on("/icon-512.png", []() { sendAsset(ICON512_PNG_RAW, sizeof(ICON512_PNG_RAW), "image/png", true, false); });
   server.on("/manifest.json", []() { sendAsset(MANIFEST_JSON_GZ, sizeof(MANIFEST_JSON_GZ), "application/manifest+json", false); });
   server.on("/brand.js", []() { sendAsset(BRAND_JS_GZ, sizeof(BRAND_JS_GZ), "application/javascript", true); });
   server.on("/autotable.js", []() { sendAsset(AUTOTABLE_JS_GZ, sizeof(AUTOTABLE_JS_GZ), "application/javascript", true); });

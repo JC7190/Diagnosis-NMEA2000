@@ -45,13 +45,13 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ## Estado actual
 
-- Firmware **v1.12** compilando con core esp32 3.3.13 (≈1,34 MB, 68 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
+- Firmware **v1.13** compilando con core esp32 3.3.13 (≈1,34 MB, 68 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
 - Probado en PC: `test/run_tests.js` (3 escenarios del simulador: averías, red sana con trampas de falsos positivos, red grande y ruidosa) y `test/ui_test.js` (Playwright, iPhone 13) contra el mock.
 - Binarios listos en `release/`.
 
 ### Cambios de la v1.12
 - «Backbone» y «cable principal» → **«troncal»** en todo lo que ve el usuario.
-- **Icono de pantalla de inicio** (diseño aprobado: `docs/icono_PoweryMax_512.png`, generador `docs/icono_generar.js`): `web/brand/icon-180/192/512.png` y `manifest.json` (nombre corto «PoweryMax N2K»), servidos en `/apple-touch-icon.png`, `/icon-192.png`, `/icon-512.png`, `/manifest.json`. `<title>` = «PoweryMax N2K».
+- **Icono de pantalla de inicio** (diseño aprobado: `docs/icono_PoweryMax_512.png`, generador `docs/icono_generar.js`): `web/brand/icon-180/192/512.png` y `manifest.json` (nombre corto «PoweryMax N2K»), servidos en `/apple-touch-icon.png`, `/icon-192.png`, `/icon-512.png` (v1.13: PNG **sin** gzip, el iPhone no descomprime el icono) y `/manifest.json`. `<title>` = «PoweryMax N2K».
 
 ### Cambios de la v1.11
 - **«Datos en tráfico»** sustituye a «tramas» en todo lo que ve el usuario (app, PDF, CSV).

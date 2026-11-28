@@ -33,16 +33,17 @@ assets = [
     ('BRAND_JS_GZ', open(os.path.join(web, 'brand.js'), 'rb').read()),
     ('JSPDF_JS_GZ', open(os.path.join(web, 'lib', 'jspdf.umd.min.js'), 'rb').read()),
     # icono de la pantalla de inicio (iPhone 180 px, Android 192/512 px) y manifiesto con el nombre
-    ('ICON180_PNG_GZ', open(os.path.join(web, 'brand', 'icon-180.png'), 'rb').read()),
-    ('ICON192_PNG_GZ', open(os.path.join(web, 'brand', 'icon-192.png'), 'rb').read()),
-    ('ICON512_PNG_GZ', open(os.path.join(web, 'brand', 'icon-512.png'), 'rb').read()),
+    ('ICON180_PNG_RAW', open(os.path.join(web, 'brand', 'icon-180.png'), 'rb').read()),
+    ('ICON192_PNG_RAW', open(os.path.join(web, 'brand', 'icon-192.png'), 'rb').read()),
+    ('ICON512_PNG_RAW', open(os.path.join(web, 'brand', 'icon-512.png'), 'rb').read()),
     ('MANIFEST_JSON_GZ', open(os.path.join(web, 'brand', 'manifest.json'), 'rb').read()),
     ('AUTOTABLE_JS_GZ', open(os.path.join(web, 'lib', 'jspdf.plugin.autotable.min.js'), 'rb').read()),
 ]
 with open(out_h, 'w') as f:
     f.write('// Generado por tools/build_web.py — no editar a mano\n#pragma once\n#include <Arduino.h>\n')
     for name, data in assets:
-        gz = gzip.compress(data, 9, mtime=0)
+        # los iconos van SIN comprimir: el iPhone no descomprime el icono de la pantalla de inicio
+        gz = data if name.endswith('_RAW') else gzip.compress(data, 9, mtime=0)
         f.write(f'// {len(data)} bytes -> {len(gz)} gzip\nconst uint8_t {name}[] PROGMEM = {{\n')
         for i in range(0, len(gz), 24):
             f.write('  ' + ','.join(str(b) for b in gz[i:i + 24]) + ',\n')
