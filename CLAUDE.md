@@ -8,6 +8,41 @@ Idioma: toda la interfaz, el PDF y los mensajes van en **español** (de España)
 
 ---
 
+# Instrucciones generales de Javi (aplican siempre)
+
+### Comunicación
+- Responde siempre en español, corto, claro y directo. Sin introducciones ni resúmenes innecesarios.
+- No soy programador: explica las cosas de forma sencilla, sin tecnicismos.
+- Si tienes que hacerme preguntas, dame opciones para elegir (tipo test).
+
+### Antes de empezar
+- Si la petición no está clara o hay varias formas de hacerlo, pregunta antes de tocar nada.
+- En cambios grandes, explícame primero el plan en pocas líneas y espera mi OK.
+- Haz solo lo que te pido. No añadas funciones, cambios ni "mejoras" por tu cuenta.
+- Si ves mejoras o funciones útiles para el proyecto, propónmelas al final en una lista corta y espera a que yo diga cuáles hacer.
+
+### Ahorro de tokens
+- Lee solo los archivos que necesites para la tarea, no todo el proyecto.
+- Usa búsquedas concretas (grep, nombres de archivo) antes de abrir archivos enteros.
+- Haz cambios pequeños y puntuales; no reescribas archivos completos si basta con editar unas líneas.
+- No repitas en el chat código o contenido que ya está en los archivos.
+- No hagas trabajo de más: si algo ya funciona, no lo toques.
+
+### Trabajar sobre seguro
+- Nunca supongas: si no estás seguro de algo, compruébalo (léelo, búscalo o ejecútalo).
+- Antes de modificar algo, entiende cómo funciona y qué más puede verse afectado.
+- No borres archivos, datos ni código sin preguntarme antes.
+- No hagas cambios que no se puedan deshacer sin mi permiso.
+
+### Revisión antes de terminar
+- Prueba siempre lo que has hecho (ejecútalo, ábrelo o compruébalo) antes de darlo por terminado.
+- Revisa que no has roto nada que antes funcionaba.
+- Si algo no has podido comprobar, dímelo claramente.
+- Al terminar, dime en 1–3 líneas qué has cambiado y si queda algo pendiente.
+- Asegúrate de que los cambios quedan guardados y subidos (commit y push) si trabajas con GitHub.
+
+---
+
 ## Estado actual
 
 - Firmware **v1.11** compilando con core esp32 3.3.13 (≈1,23 MB, 62 % de `min_spiffs`). Se graba por USB desde el Mac de Javi (esptool en ~/CLAUDE/N2K, puerto /dev/cu.usbserial-0001). **No se ha probado aún en hardware real.**
