@@ -136,7 +136,7 @@
     const hasV = v.now > 4 && !v.fl;
     if (!b.frames) {
       if ((s.dur || 0) < 4000) return setStatus('wait', 'Escuchando la red…', 'Un momento, buscando equipos.');
-      if (!hasV) return setStatus('bad', 'No llega nada de la red', 'Comprueba que la herramienta está conectada a una T del backbone y que la red NMEA 2000 tiene alimentación (interruptor y fusible).');
+      if (!hasV) return setStatus('bad', 'No llega nada de la red', 'Comprueba que la herramienta está conectada a una T de la troncal y que la red NMEA 2000 tiene alimentación (interruptor y fusible).');
       return setStatus('warn', 'Hay tensión, pero no llegan datos', 'Enciende algún equipo de la red (pantalla, GPS…). Si ya están encendidos, haz el diagnóstico para buscar la causa.');
     }
     if (hasV && v.now > CFG.tension.seguridad24V) return setStatus('bad', `¡Tensión peligrosa: ${fmt(v.now, 1)} V!`, 'Más de 16 V en la red: puede estar a 24 V. Desconecta la alimentación de la red.');
@@ -326,7 +326,7 @@
       return;
     }
     let h = `<h3>Paso ${n}</h3><ol><li>Apaga la alimentación de la red.</li>`;
-    if (!lastS) h += '<li>Desconecta el cable principal <b>por la mitad</b>. Deja conectada la mitad donde está esta herramienta y la alimentación.</li>';
+    if (!lastS) h += '<li>Desconecta la troncal <b>por la mitad</b>. Deja conectada la mitad donde está esta herramienta y la alimentación.</li>';
     else if (lastS.res === 'bad') h += '<li>El fallo está en la parte que <b>sigue conectada</b>. Desconecta ahora <b>la mitad más alejada</b> de esa parte.</li>';
     else if (lastS.res === 'good') h += '<li>El fallo estaba en lo que <b>quitaste en el paso anterior</b>. Vuelve a conectar <b>solo la mitad más cercana</b> de ese trozo.</li>';
     else h += '<li>Revisa que la herramienta y la alimentación estén en la parte conectada, y repite la medida.</li>';

@@ -161,7 +161,7 @@
     if (!bus.frames) {
       add('fail', 'Red', 'No se recibe ningún dato de la red',
         'La herramienta no ve ningún dato en tráfico NMEA 2000 durante la prueba.',
-        'Comprueba en este orden: 1) que la red tiene alimentación (cable de power con su fusible y el interruptor), 2) que hay dos terminadores, 3) que la herramienta está bien conectada a una T del backbone, 4) que no hay cables CAN-H/CAN-L (blanco/azul) cruzados en algún conector reparado.');
+        'Comprueba en este orden: 1) que la red tiene alimentación (cable de power con su fusible y el interruptor), 2) que hay dos terminadores, 3) que la herramienta está bien conectada a una T de la troncal, 4) que no hay cables CAN-H/CAN-L (blanco/azul) cruzados en algún conector reparado.');
     }
 
     // ---- 2. Alimentación (PHY-01, PHY-03) ----
@@ -179,7 +179,7 @@
         `Por debajo de 9 V los equipos NMEA 2000 dejan de funcionar o se reinician. Media ${fmt(v.avg, 2)} V.`,
         'Revisa la batería, el fusible y el cable de alimentación de la red. Busca conectores flojos u oxidados, sobre todo en la T de alimentación. Si la red es larga, aliméntala por el centro.');
       else if (v.min < TV.avisoBajo) add('warn', 'Alimentación', `Tensión baja en la red (mín. ${fmt(v.min, 2)} V)`,
-        `La tensión llegó a bajar a ${fmt(v.min, 2)} V (media ${fmt(v.avg, 2)} V). En el extremo más lejano del backbone puede ser aún menor.`,
+        `La tensión llegó a bajar a ${fmt(v.min, 2)} V (media ${fmt(v.avg, 2)} V). En el extremo más lejano de la troncal puede ser aún menor.`,
         'Comprueba la carga de la batería y la conexión de la T de alimentación. Si coincide con el arranque del motor o del motor eléctrico, alimenta la red desde una batería o línea separada.');
       if (pp !== null && pp > RZ.falloPP) add('fail', 'Alimentación', `Saltos de tensión muy grandes (≈ ${fmt(pp, 1)} V pico a pico)`,
         `La tensión dio saltos bruscos durante la prueba (entre ${fmt(v.min, 1)} y ${fmt(v.max, 1)} V).`,
@@ -199,11 +199,11 @@
     // ---- 3. Terminadores (PHY-08, medida manual: prevalece sobre las estimaciones) ----
     const T = {
       '60': ['ok', 'Terminadores correctos (aprox. 60 ohm)', 'Medida del técnico con la red apagada.', ''],
-      '120': ['fail', 'Solo se detecta un terminador (aprox. 120 ohm)', 'Falta un terminador, uno está averiado (roto por dentro) o el cable principal está cortado entre los dos. Sin los dos, la señal rebota y aparecen errores y equipos que se caen.', 'Con la red apagada: 1) quita los dos terminadores y mide cada uno entre sus pines 4 (blanco) y 5 (azul): el bueno da unos 120 ohm; el roto, infinito o un valor raro. Cámbialo. 2) Si los dos dan 120 ohm, el cable principal está cortado: mide en una T cerca de cada extremo; donde salga 120 en vez de 60, el corte está entre esa T y el terminador que no se ve. 3) Si falta, pon uno en cada extremo (uno macho y otro hembra).'],
-      '40': ['fail', 'Sobran terminadores (40 ohm o menos)', 'Hay tres o más terminadores. Pasa a menudo con equipos que llevan terminador interno o con terminadores olvidados en una T.', 'Deja solo dos terminadores, uno en cada extremo del backbone. Revisa si algún equipo tiene terminación interna activada.'],
-      'open': ['fail', 'Sin terminadores o backbone cortado (resistencia muy alta)', 'Entre CAN-H y CAN-L no hay continuidad: no hay terminadores o el cable del backbone está cortado.', 'Pon dos terminadores; si ya están, busca el tramo cortado midiendo por secciones.'],
+      '120': ['fail', 'Solo se detecta un terminador (aprox. 120 ohm)', 'Falta un terminador, uno está averiado (roto por dentro) o la troncal está cortada entre los dos. Sin los dos, la señal rebota y aparecen errores y equipos que se caen.', 'Con la red apagada: 1) quita los dos terminadores y mide cada uno entre sus pines 4 (blanco) y 5 (azul): el bueno da unos 120 ohm; el roto, infinito o un valor raro. Cámbialo. 2) Si los dos dan 120 ohm, la troncal está cortada: mide en una T cerca de cada extremo; donde salga 120 en vez de 60, el corte está entre esa T y el terminador que no se ve. 3) Si falta, pon uno en cada extremo (uno macho y otro hembra).'],
+      '40': ['fail', 'Sobran terminadores (40 ohm o menos)', 'Hay tres o más terminadores. Pasa a menudo con equipos que llevan terminador interno o con terminadores olvidados en una T.', 'Deja solo dos terminadores, uno en cada extremo de la troncal. Revisa si algún equipo tiene terminación interna activada.'],
+      'open': ['fail', 'Sin terminadores o troncal cortada (resistencia muy alta)', 'Entre CAN-H y CAN-L no hay continuidad: no hay terminadores o la troncal está cortada.', 'Pon dos terminadores; si ya están, busca el tramo cortado midiendo por secciones.'],
       'short': ['fail', 'Cortocircuito entre CAN-H y CAN-L (menos de 10 ohm)', 'Las líneas de datos están en cortocircuito: la red no puede funcionar.', 'Desconecta equipos y cables uno a uno hasta que desaparezca el corto; suele ser un conector con agua o un cable pisado.'],
-      'jump': ['fail', 'La medida de los terminadores no se estabiliza', 'Una lectura que salta suele indicar mal contacto o los cables blanco (CAN-H) y azul (CAN-L) cruzados en algún conector.', 'Revisa los conectores reparados o montados a mano: el blanco va al pin 4 y el azul al pin 5. Mide por tramos (desconectando la mitad del backbone) hasta encontrar el que falla.'],
+      'jump': ['fail', 'La medida de los terminadores no se estabiliza', 'Una lectura que salta suele indicar mal contacto o los cables blanco (CAN-H) y azul (CAN-L) cruzados en algún conector.', 'Revisa los conectores reparados o montados a mano: el blanco va al pin 4 y el azul al pin 5. Mide por tramos (desconectando la mitad de la troncal) hasta encontrar el que falla.'],
     };
     if (T[manual.term]) { const t = T[manual.term]; add(t[0], 'Cableado', t[1], t[2], t[3]); }
     else add('na', 'Cableado', 'Terminadores no medidos', 'No se hizo la medida de resistencia entre CAN-H y CAN-L.', 'Con la red apagada, mide entre el pin 4 (blanco) y el 5 (azul) de una T libre: debe dar unos 60 ohm.');
@@ -470,7 +470,7 @@
     // ---- 12. Consumo (LEN) ----
     const lenTotal = devs.reduce((s, d) => s + (d.pi && d.pi.len ? d.pi.len : 0), 0);
     if (lenTotal > CFG.consumo.avisoLEN) add('warn', 'Alimentación', `Consumo de red alto (${lenTotal} LEN = ${fmt(lenTotal * 0.05, 2)} A)`,
-      'La suma de consumos declarados por los equipos supera los 3 A que admite una red con cable Micro.', 'Comprueba la tensión en el extremo más lejano del backbone y alimenta la red por el centro si cae mucho.');
+      'La suma de consumos declarados por los equipos supera los 3 A que admite una red con cable Micro.', 'Comprueba la tensión en el extremo más lejano de la troncal y alimenta la red por el centro si cae mucho.');
 
     // ---- 13. Límites de la herramienta ----
     if (live.heap && live.heap < 25000) add('info', 'Herramienta', 'Memoria de la herramienta baja',

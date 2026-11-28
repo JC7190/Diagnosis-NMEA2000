@@ -32,6 +32,11 @@ assets = [
     ('UPDATE_HTML_GZ', rd('update.html').replace('<!--LOGO-->', logo).encode('utf-8')),
     ('BRAND_JS_GZ', open(os.path.join(web, 'brand.js'), 'rb').read()),
     ('JSPDF_JS_GZ', open(os.path.join(web, 'lib', 'jspdf.umd.min.js'), 'rb').read()),
+    # icono de la pantalla de inicio (iPhone 180 px, Android 192/512 px) y manifiesto con el nombre
+    ('ICON180_PNG_GZ', open(os.path.join(web, 'brand', 'icon-180.png'), 'rb').read()),
+    ('ICON192_PNG_GZ', open(os.path.join(web, 'brand', 'icon-192.png'), 'rb').read()),
+    ('ICON512_PNG_GZ', open(os.path.join(web, 'brand', 'icon-512.png'), 'rb').read()),
+    ('MANIFEST_JSON_GZ', open(os.path.join(web, 'brand', 'manifest.json'), 'rb').read()),
     ('AUTOTABLE_JS_GZ', open(os.path.join(web, 'lib', 'jspdf.plugin.autotable.min.js'), 'rb').read()),
 ]
 with open(out_h, 'w') as f:
