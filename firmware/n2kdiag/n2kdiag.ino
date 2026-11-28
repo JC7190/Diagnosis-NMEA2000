@@ -17,7 +17,7 @@
 #include "web_assets.h"
 
 // ---------------- Configuración ----------------
-#define FW_VERSION   "1.13"
+#define FW_VERSION   "1.14"
 #define CAN_TX_PIN   GPIO_NUM_5
 #define CAN_RX_PIN   GPIO_NUM_4
 #define VSENSE_PIN   34            // divisor 100k / 20k desde NET-S (+12 V)
@@ -520,7 +520,7 @@ void sendAsset(const uint8_t* data, size_t len, const char* type, bool cache, bo
     size_t n = len - off < 2048 ? len - off : 2048;
     size_t w = c.write(data + off, n);
     if (w > 0) { off += w; lastOk = millis(); }
-    else if (millis() - lastOk > 10000) break;   // 10 s sin avanzar: se da por perdido
+    else if (millis() - lastOk > (gz ? 10000u : 3000u)) break;   // sin avanzar: se da por perdido (iconos: 3 s)
     else delay(5);
   }
   Serial.printf("[web] %s %u/%u bytes en %u ms%s\n", server.uri().c_str(), (unsigned)off, (unsigned)len,
